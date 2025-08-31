@@ -10,6 +10,8 @@ import NouveauPrestataireModal from "./ActionsRapides/Prestataires";
 import TableaudeBord from "./PageOngletSideBare/TableaudeBord";
 import Properties from "./PageOngletSideBare/MesProprietes";
 import Tenants from "./PageOngletSideBare/GestionLocataires";
+import Revenue from "./PageOngletSideBare/RevenusPaiements";
+import Contracts from "./PageOngletSideBare/ContratsDocuments";
 
 
 export default function ProprietaireDashboard() {
@@ -43,8 +45,8 @@ export default function ProprietaireDashboard() {
         />;
       case 'properties': return <Properties setIsModalOpen={setIsModalOpen} />;
       case 'tenants': return <Tenants setIsTenantModalOpen={setIsTenantModalOpen} />;
-      // case 'revenue': return <Revenue />;
-      // case 'contracts': return <Contracts />;
+      case 'revenue': return <Revenue />;
+      case 'contracts': return <Contracts />;
       default: return <TableaudeBord />;
     }
   };
@@ -296,7 +298,7 @@ export default function ProprietaireDashboard() {
     <div className="min-h-screen bg-gradient-to-br from-red-400 to-orange-500">
       <div className="flex w-full h-screen bg-gray-50">
         {/* Sidebar - Plus compact */}
-        <div className="w-auto md:w-48 lg:w-52 xl:w-56 bg-gradient-to-b from-white to-gray-50 border-r border-gray-200 flex flex-col p-2 shadow-xl relative">
+        <div className="w-auto md:w-48 lg:w-60 xl:w-56 bg-gradient-to-b from-white to-gray-50 border-r border-gray-200 flex flex-col p-2 shadow-xl relative">
           <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-red-400 to-orange-500"></div>
 
           {/* Logo Section - Réduit */}
