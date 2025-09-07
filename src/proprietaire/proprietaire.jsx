@@ -10,8 +10,7 @@ import NouveauPrestataireModal from "./ActionsRapides/Prestataires";
 import TableaudeBord from "./PageOngletSideBare/TableaudeBord";
 import Properties from "./PageOngletSideBare/MesProprietes";
 import Tenants from "./PageOngletSideBare/GestionLocataires";
-import Revenue from "./PageOngletSideBare/RevenusPaiements";
-import Contracts from "./PageOngletSideBare/ContratsDocuments";
+import EvaluationIA from "./PageOngletSideBare/EvaluationIA";
 
 
 export default function ProprietaireDashboard() {
@@ -20,6 +19,7 @@ export default function ProprietaireDashboard() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [revenueValue, setRevenueValue] = useState(2450000);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Pour le contenu de la page 
   const renderContent = () => {
@@ -45,8 +45,9 @@ export default function ProprietaireDashboard() {
         />;
       case 'properties': return <Properties setIsModalOpen={setIsModalOpen} />;
       case 'tenants': return <Tenants setIsTenantModalOpen={setIsTenantModalOpen} />;
-      case 'revenue': return <Revenue />;
-      case 'contracts': return <Contracts />;
+      case 'evaluation': return <EvaluationIA />;
+      // case 'revenue': return <Revenue />;
+      // case 'contracts': return <Contracts />;
       default: return <TableaudeBord />;
     }
   };
@@ -59,9 +60,7 @@ export default function ProprietaireDashboard() {
   const [isÉvaluationIAModalOpen, setIsÉvaluationIAModalOpen] = useState(false);
   const [isPrestatairesModalOpen, setIsPrestatairesModalOpen] = useState(false);
 
-  const openModal = () => {
-    setIsModalOpen(true);
-  };
+
 
   const closeModal = () => {
     setIsModalOpen(false);
@@ -87,6 +86,11 @@ export default function ProprietaireDashboard() {
     setIsPrestatairesModalOpen(false);
   };
 
+  // Toggle sidebar function
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed(!isSidebarCollapsed);
+  };
+
   // Update time every second
   useEffect(() => {
     const timer = setInterval(() => {
@@ -109,8 +113,8 @@ export default function ProprietaireDashboard() {
 
   const navItems = [
     { id: 'dashboard', icon: '📊', label: 'Tableau de bord', active: true },
-    { id: 'properties', icon: '🏢', label: 'Mes Propriétés', badge: '8' },
-    { id: 'tenants', icon: '👥', label: 'Gestion Locataires', badge: '12' },
+    { id: 'properties', icon: '🏢', label: 'Mes Propriétés'},
+    { id: 'tenants', icon: '👥', label: 'Gestion Locataires'},
     { id: 'revenue', icon: '💰', label: 'Revenus & Paiements' },
     { id: 'contracts', icon: '📄', label: 'Contrats & Documents' },
   ];
@@ -118,7 +122,7 @@ export default function ProprietaireDashboard() {
   const serviceItems = [
     { id: 'evaluation', icon: '📈', label: 'Évaluation IA', premium: true },
     { id: 'providers', icon: '🛠️', label: 'Prestataires' },
-    { id: 'messages', icon: '💬', label: 'Messages', badge: '5' },
+    { id: 'messages', icon: '💬', label: 'Messages' },
     { id: 'advertising', icon: '📢', label: 'Publier Annonce' },
     { id: 'marketing', icon: '🎯', label: 'Marketing IA', premium: true },
   ];
@@ -279,7 +283,12 @@ export default function ProprietaireDashboard() {
   };
 
   const handlePremiumClick = (feature) => {
-    alert(`🚀 Fonctionnalité Premium: ${feature}\n\nAccès aux outils IA avancés pour l'analyse et l'optimisation de votre portefeuille immobilier.`);
+    if (feature === 'Évaluation IA') {
+      // Rediriger vers le catalogue IA au lieu d'afficher une alerte
+      setActiveNav('evaluation');
+    } else {
+      alert(`🚀 Fonctionnalité Premium: ${feature}\n\nAccès aux outils IA avancés pour l'analyse et l'optimisation de votre portefeuille immobilier.`);
+    }
   };
 
   const handlePropertyClick = (property) => {
@@ -297,33 +306,50 @@ export default function ProprietaireDashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-400 to-orange-500">
       <div className="flex w-full h-screen bg-gray-50">
-        {/* Sidebar - Plus compact */}
-        <div className="w-auto md:w-48 lg:w-60 xl:w-56 bg-gradient-to-b from-white to-gray-50 border-r border-gray-200 flex flex-col p-2 shadow-xl relative">
+        {/* Sidebar - Avec fonctionnalité collapse */}
+        <div className={`${isSidebarCollapsed ? 'w-16' : 'w-auto md:w-48 lg:w-52 xl:w-56'} bg-gradient-to-b from-white to-gray-50 border-r border-gray-200 flex flex-col p-2 shadow-xl relative transition-all duration-300 ease-in-out`}>
           <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-red-400 to-orange-500"></div>
 
-          {/* Logo Section - Réduit */}
-          <div className="flex items-center gap-2 mb-3 p-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-red-400 to-orange-500 rounded-lg flex items-center justify-center text-white font-bold text-sm shadow-lg relative overflow-hidden">
+          {/* Toggle Button - En haut du sidebar */}
+          <div className="flex items-center justify-between mb-3">
+            <button
+              onClick={toggleSidebar}
+              className="w-8 h-8 bg-gradient-to-br from-red-400 to-orange-500 rounded-lg flex items-center justify-center text-white font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 relative overflow-hidden group"
+            >
               <div className="absolute inset-0 bg-gradient-to-45 from-transparent via-white/20 to-transparent animate-pulse"></div>
-              H
-            </div>
-            <div className="flex flex-col">
-              <div className="text-sm font-bold bg-gradient-to-r from-red-400 to-orange-500 bg-clip-text text-transparent">
-                HABIPRO
+              <span className="relative z-10 text-xs">
+                {isSidebarCollapsed ? '→' : '←'}
+              </span>
+            </button>
+            
+            {/* Logo Section - Visible seulement si sidebar pas collapsed */}
+            {!isSidebarCollapsed && (
+              <div className="flex items-center gap-2 p-2">
+                <div className="w-8 h-8 bg-gradient-to-br from-red-400 to-orange-500 rounded-lg flex items-center justify-center text-white font-bold text-sm shadow-lg relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-45 from-transparent via-white/20 to-transparent animate-pulse"></div>
+                  H
+                </div>
+                <div className="flex flex-col">
+                  <div className="text-sm font-bold bg-gradient-to-r from-red-400 to-orange-500 bg-clip-text text-transparent">
+                    HABIPRO
+                  </div>
+                  <div className="text-[9px] text-gray-500 font-semibold uppercase tracking-wider">
+                    Propriétaire
+                  </div>
+                </div>
               </div>
-              <div className="text-[9px] text-gray-500 font-semibold uppercase tracking-wider">
-                Propriétaire
-              </div>
-            </div>
+            )}
           </div>
 
           <div className="overflow-y-auto scrollbar-hide flex-1">
-            {/* Navigation - Plus compact */}
+            {/* Navigation - Adaptée au mode collapsed */}
             <div className="flex-1">
-              <div className="text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-2 pl-2 relative">
-                <div className="absolute left-0 top-1/2 w-1.5 h-0.5 bg-gradient-to-r from-red-400 to-orange-500 rounded-full"></div>
-                Gestion Immobilière
-              </div>
+              {!isSidebarCollapsed && (
+                <div className="text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-2 pl-2 relative">
+                  <div className="absolute left-0 top-1/2 w-1.5 h-0.5 bg-gradient-to-r from-red-400 to-orange-500 rounded-full"></div>
+                  Gestion Immobilière
+                </div>
+              )}
 
               {navItems.map((item) => (
                 <a
@@ -333,28 +359,40 @@ export default function ProprietaireDashboard() {
                     e.preventDefault();
                     handleNavClick(item.id);
                   }}
-                  className={`flex items-center p-2  rounded-lg mb-1 mr-1 transition-all duration-300 relative overflow-hidden group text-sm ${activeNav === item.id
+                  className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : ''} p-2 rounded-lg mb-1 mr-1 transition-all duration-300 relative overflow-hidden group text-sm ${activeNav === item.id
                     ? 'text-red-500 bg-gradient-to-r from-red-50 to-orange-50 font-semibold transform translate-x-1 shadow-md'
                     : 'text-gray-700 hover:text-red-500 hover:transform hover:translate-x-1 hover:shadow-sm'
                     }`}
+                  title={isSidebarCollapsed ? item.label : ''}
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-red-400 to-orange-500 opacity-0 group-hover:opacity-10 transition-opacity duration-300"></div>
                   <div className="w-3 h-3 flex items-center justify-center text-sm relative z-10">
                     {item.icon}
                   </div>
-                  <span className="font-medium relative z-10 ml-1.5 text-sm">{item.label}</span>
-                  {item.badge && (
-                    <div className="ml-auto bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-lg relative z-10">
+                  {!isSidebarCollapsed && (
+                    <>
+                      <span className="font-medium relative z-10 ml-1.5 text-sm">{item.label}</span>
+                      {item.badge && (
+                        <div className="ml-auto bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-lg relative z-10">
+                          {item.badge}
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {isSidebarCollapsed && item.badge && (
+                    <div className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold px-1 py-0.5 rounded-full relative z-10 min-w-[16px] h-4 flex items-center justify-center">
                       {item.badge}
                     </div>
                   )}
                 </a>
               ))}
 
-              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3 pl-3 mt-6 relative">
-                <div className="absolute left-0 top-1/2 w-2 h-0.5 bg-gradient-to-r from-red-400 to-orange-500 rounded-full"></div>
-                Services & Outils
-              </div>
+              {!isSidebarCollapsed && (
+                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3 pl-3 mt-6 relative">
+                  <div className="absolute left-0 top-1/2 w-2 h-0.5 bg-gradient-to-r from-red-400 to-orange-500 rounded-full"></div>
+                  Services & Outils
+                </div>
+              )}
 
               {serviceItems.map((item) => (
                 <a
@@ -362,36 +400,60 @@ export default function ProprietaireDashboard() {
                   href="#"
                   onClick={(e) => {
                     e.preventDefault();
-                    if (item.premium) {
+                    if (item.premium && item.id === 'evaluation') {
+                      // Pour l'évaluation IA, rediriger directement vers le catalogue
+                      handleNavClick('evaluation');
+                    } else if (item.premium) {
                       handlePremiumClick(item.label);
                     } else {
                       handleNavClick(item.id);
                     }
                   }}
-                  className="flex items-center text-sm p-2 rounded-lg mb-1 mr-2 text-gray-700 hover:text-red-500 hover:transform hover:translate-x-2 hover:shadow-sm transition-all duration-300 relative overflow-hidden group"
+                  className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : ''} text-sm p-2 rounded-lg mb-1 mr-2 transition-all duration-300 relative overflow-hidden group ${
+                    activeNav === item.id
+                      ? 'text-red-500 bg-gradient-to-r from-red-50 to-orange-50 font-semibold transform translate-x-1 shadow-md'
+                      : 'text-gray-700 hover:text-red-500 hover:transform hover:translate-x-2 hover:shadow-sm'
+                  }`}
+                  title={isSidebarCollapsed ? item.label : ''}
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-red-400 to-orange-500 opacity-0 group-hover:opacity-10 transition-opacity duration-300"></div>
                   <div className="w-4 h-4 flex items-center justify-center text-sm relative z-10">
                     {item.icon}
                   </div>
-                  <span className="font-medium relative z-10 ml-2">{item.label}</span>
-                  {item.premium && (
-                    <div className="ml-auto bg-gradient-to-r from-purple-400 to-indigo-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md relative z-10">
-                      PRO
+                  {!isSidebarCollapsed && (
+                    <>
+                      <span className="font-medium relative z-10 ml-2">{item.label}</span>
+                      {item.premium && (
+                        <div className="ml-auto bg-gradient-to-r from-purple-400 to-indigo-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md relative z-10">
+                          PRO
+                        </div>
+                      )}
+                      {item.badge && !item.premium && (
+                        <div className="ml-auto bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-lg relative z-10">
+                          {item.badge}
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {isSidebarCollapsed && item.badge && !item.premium && (
+                    <div className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold px-1 py-0.5 rounded-full relative z-10 min-w-[16px] h-4 flex items-center justify-center">
+                      {item.badge}
                     </div>
                   )}
-                  {item.badge && !item.premium && (
-                    <div className="ml-auto bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-lg relative z-10">
-                      {item.badge}
+                  {isSidebarCollapsed && item.premium && (
+                    <div className="absolute -top-1 -right-1 bg-gradient-to-r from-purple-400 to-indigo-500 text-white text-[8px] font-bold px-1 py-0.5 rounded-full relative z-10 min-w-[18px] h-4 flex items-center justify-center">
+                      PRO
                     </div>
                   )}
                 </a>
               ))}
 
-              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3 pl-3 mt-6 relative">
-                <div className="absolute left-0 top-1/2 w-2 h-0.5 bg-gradient-to-r from-red-400 to-orange-500 rounded-full"></div>
-                Administration
-              </div>
+              {!isSidebarCollapsed && (
+                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3 pl-3 mt-6 relative">
+                  <div className="absolute left-0 top-1/2 w-2 h-0.5 bg-gradient-to-r from-red-400 to-orange-500 rounded-full"></div>
+                  Administration
+                </div>
+              )}
 
               {adminItems.map((item) => (
                 <a
@@ -401,29 +463,34 @@ export default function ProprietaireDashboard() {
                     e.preventDefault();
                     handleNavClick(item.id);
                   }}
-                  className="flex items-center text-sm p-2 rounded-lg mb-1 mr-2 text-gray-700 hover:text-red-500 hover:transform hover:translate-x-2 hover:shadow-sm transition-all duration-300 relative overflow-hidden group"
+                  className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : ''} text-sm p-2 rounded-lg mb-1 mr-2 text-gray-700 hover:text-red-500 hover:transform hover:translate-x-2 hover:shadow-sm transition-all duration-300 relative overflow-hidden group`}
+                  title={isSidebarCollapsed ? item.label : ''}
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-red-400 to-orange-500 opacity-0 group-hover:opacity-10 transition-opacity duration-300"></div>
                   <div className="w-4 h-4 flex items-center justify-center text-sm relative z-10">
                     {item.icon}
                   </div>
-                  <span className="font-medium relative z-10 ml-2">{item.label}</span>
+                  {!isSidebarCollapsed && (
+                    <span className="font-medium relative z-10 ml-2">{item.label}</span>
+                  )}
                 </a>
               ))}
             </div>
 
-            {/* Status Card - Plus compact */}
-            <div className="bg-gradient-to-br from-red-400 to-orange-500 rounded-lg p-2.5 text-center text-white shadow-lg relative overflow-hidden mt-3">
-              <div className="absolute inset-0 bg-gradient-to-45 from-transparent via-white/15 to-transparent animate-pulse"></div>
-              <div className="text-sm font-bold mb-1 relative z-10">Premium</div>
-              <div className="text-xs opacity-90 mb-2 relative z-10">8 propriétés • 12 locataires</div>
-              <button
-                onClick={() => alert('Interface de gestion avancée à implémenter')}
-                className="bg-white/25 backdrop-blur-sm border border-white/30 px-2 py-1 rounded-md text-white font-semibold text-sm transition-all duration-300 hover:bg-white/35 hover:-translate-y-1 hover:shadow-md relative z-10"
-              >
-                Gestion avancée
-              </button>
-            </div>
+            {/* Status Card - Visible seulement si sidebar pas collapsed */}
+            {!isSidebarCollapsed && (
+              <div className="bg-gradient-to-br from-red-400 to-orange-500 rounded-lg p-2.5 text-center text-white shadow-lg relative overflow-hidden mt-3">
+                <div className="absolute inset-0 bg-gradient-to-45 from-transparent via-white/15 to-transparent animate-pulse"></div>
+                <div className="text-sm font-bold mb-1 relative z-10">Premium</div>
+                <div className="text-xs opacity-90 mb-2 relative z-10">8 propriétés • 12 locataires</div>
+                <button
+                  onClick={() => alert('Interface de gestion avancée à implémenter')}
+                  className="bg-white/25 backdrop-blur-sm border border-white/30 px-2 py-1 rounded-md text-white font-semibold text-sm transition-all duration-300 hover:bg-white/35 hover:-translate-y-1 hover:shadow-md relative z-10"
+                >
+                  Gestion avancée
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -435,13 +502,12 @@ export default function ProprietaireDashboard() {
             <div className="flex justify-between items-center gap-3">
               <div className="flex-1">
                 <div className="text-sm font-bold mb-1 bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
-                  Tableau de Bord Propriétaire
+                  {activeNav === 'evaluation' ? 'Catalogue Intelligence Artificielle' : 'Tableau de Bord Propriétaire'}
                 </div>
                 <div className="text-red-500 font-semibold flex items-center gap-2 text-xs">
                   <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
                   <div>
                     <div>Bienvenue • {currentTime.toLocaleTimeString('fr-FR')}</div>
-
                   </div>
                 </div>
               </div>
@@ -499,7 +565,7 @@ export default function ProprietaireDashboard() {
                   <div className="text-[10px]">{formatCurrency(revenueValue)}</div>
                 </div>
 
-                {/* User Info - Plus compact */}
+               {/* User Info - Plus compact */}
                 <div className="flex items-center gap-2 p-2 pr-3 bg-white border border-gray-200 rounded-lg cursor-pointer hover:shadow-md hover:transform hover:-translate-y-1 transition-all duration-300">
                   <div className="w-7 h-7 bg-gradient-to-br from-red-400 to-orange-500 rounded-lg flex items-center justify-center text-white font-bold text-xs">
                     AB
@@ -513,7 +579,7 @@ export default function ProprietaireDashboard() {
             </div>
           </div>
 
-          <div className=" overflow-y-auto">
+          <div className="overflow-y-auto">
             {renderContent()}
           </div>
 
@@ -526,8 +592,6 @@ export default function ProprietaireDashboard() {
       <EvaluationIAModal isOpen={isÉvaluationIAModalOpen} onClose={closeÉvaluationIAModal} />
       <NouveauPrestataireModal isOpen={isPrestatairesModalOpen} onClose={closePrestatairesModal} />
 
-
-
-    </div >
+    </div>
   );
 }
