@@ -12,7 +12,7 @@ import Properties from "./PageOngletSideBare/MesProprietes";
 import Tenants from "./PageOngletSideBare/GestionLocataires";
 import EvaluationIA from "./PageOngletSideBare/EvaluationIA";
 import RevenusPaiements from "./PageOngletSideBare/RevenusPaiements";
-
+import ContratsDocuments from "./PageOngletSideBare/ContratsDocuments";
 
 export default function ProprietaireDashboard() {
   const [activeNav, setActiveNav] = useState('dashboard');
@@ -45,8 +45,8 @@ export default function ProprietaireDashboard() {
       case 'properties': return <Properties setIsModalOpen={setIsModalOpen} />;
       case 'tenants': return <Tenants setIsTenantModalOpen={setIsTenantModalOpen} />;
       case 'evaluation': return <EvaluationIA />;
-      case 'revenue': return <RevenusPaiements formatCurrency={formatCurrency} />; // NOUVELLE LIGNE
-      // case 'contracts': return <Contracts />;
+      case 'revenue': return <RevenusPaiements formatCurrency={formatCurrency} />;
+      case 'contracts': return <ContratsDocuments />; // NOUVELLE LIGNE
       default: return <TableaudeBord />;
     }
   };
