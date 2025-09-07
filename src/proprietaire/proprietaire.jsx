@@ -11,6 +11,7 @@ import TableaudeBord from "./PageOngletSideBare/TableaudeBord";
 import Properties from "./PageOngletSideBare/MesProprietes";
 import Tenants from "./PageOngletSideBare/GestionLocataires";
 import EvaluationIA from "./PageOngletSideBare/EvaluationIA";
+import RevenusPaiements from "./PageOngletSideBare/RevenusPaiements";
 
 
 export default function ProprietaireDashboard() {
@@ -24,7 +25,6 @@ export default function ProprietaireDashboard() {
   // Pour le contenu de la page 
   const renderContent = () => {
     switch (activeNav) {
-      // case 'dashboard': return <TableaudeBord />;
       case 'dashboard':
         return <TableaudeBord
           setIsModalOpen={setIsModalOpen}
@@ -34,7 +34,6 @@ export default function ProprietaireDashboard() {
           setIsÉvaluationIAModalOpen={setIsÉvaluationIAModalOpen}
           setIsPrestatairesModalOpen={setIsPrestatairesModalOpen}
           formatCurrency={formatCurrency}
-          // Passer aussi les données si nécessaire
           properties={properties}
           tenants={tenants}
           notifications={notifications}
@@ -46,11 +45,13 @@ export default function ProprietaireDashboard() {
       case 'properties': return <Properties setIsModalOpen={setIsModalOpen} />;
       case 'tenants': return <Tenants setIsTenantModalOpen={setIsTenantModalOpen} />;
       case 'evaluation': return <EvaluationIA />;
-      // case 'revenue': return <Revenue />;
+      case 'revenue': return <RevenusPaiements formatCurrency={formatCurrency} />; // NOUVELLE LIGNE
       // case 'contracts': return <Contracts />;
       default: return <TableaudeBord />;
     }
   };
+
+
 
   // Pour les modals
   const [isModalOpen, setIsModalOpen] = useState(false);
