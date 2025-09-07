@@ -13,6 +13,7 @@ import Tenants from "./PageOngletSideBare/GestionLocataires";
 import EvaluationIA from "./PageOngletSideBare/EvaluationIA";
 import RevenusPaiements from "./PageOngletSideBare/RevenusPaiements";
 import ContratsDocuments from "./PageOngletSideBare/ContratsDocuments";
+import Prestataire from "./PageOngletSideBare/prestataire";
 
 export default function ProprietaireDashboard() {
   const [activeNav, setActiveNav] = useState('dashboard');
@@ -46,12 +47,11 @@ export default function ProprietaireDashboard() {
       case 'tenants': return <Tenants setIsTenantModalOpen={setIsTenantModalOpen} />;
       case 'evaluation': return <EvaluationIA />;
       case 'revenue': return <RevenusPaiements formatCurrency={formatCurrency} />;
-      case 'contracts': return <ContratsDocuments />; // NOUVELLE LIGNE
+      case 'contracts': return <ContratsDocuments />;
+      case 'providers': return <Prestataire setIsPrestatairesModalOpen={setIsPrestatairesModalOpen} />;
       default: return <TableaudeBord />;
     }
   };
-
-
 
   // Pour les modals
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -60,8 +60,6 @@ export default function ProprietaireDashboard() {
   const [isAnnonceModalOpen, setIsAnnonceModalOpen] = useState(false);
   const [isÉvaluationIAModalOpen, setIsÉvaluationIAModalOpen] = useState(false);
   const [isPrestatairesModalOpen, setIsPrestatairesModalOpen] = useState(false);
-
-
 
   const closeModal = () => {
     setIsModalOpen(false);
@@ -136,21 +134,18 @@ export default function ProprietaireDashboard() {
   ];
 
   const quickActions = [
-    // { icon: '🏢', label: 'Ajouter Propriété', gradient: 'from-red-400 to-orange-400',onClick: () => setIsModalOpen(true) },
     {
       icon: '🏢',
       label: 'Ajouter Propriété',
       gradient: 'from-red-400 to-orange-400',
       onClick: () => setIsModalOpen(true)
     },
-    // { icon: '👥', label: 'Nouveau Locataire', gradient: 'from-blue-400 to-blue-600' },
     {
       icon: '👥',
       label: 'Nouveau Locataire',
       gradient: 'from-blue-400 to-blue-600',
       onClick: () => setIsTenantModalOpen(true)
     },
-
     {
       icon: '📄',
       label: 'Créer Contrat',
@@ -163,14 +158,12 @@ export default function ProprietaireDashboard() {
       gradient: 'from-purple-400 to-indigo-500',
       onClick: () => setIsÉvaluationIAModalOpen(true)
     },
-
     {
       icon: '📢',
       label: 'Publier Annonce',
       gradient: 'from-yellow-400 to-orange-500',
       onClick: () => setIsAnnonceModalOpen(true)
     },
-
     {
       icon: '🛠️',
       label: 'Prestataires',
@@ -503,7 +496,8 @@ export default function ProprietaireDashboard() {
             <div className="flex justify-between items-center gap-3">
               <div className="flex-1">
                 <div className="text-sm font-bold mb-1 bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
-                  {activeNav === 'evaluation' ? 'Catalogue Intelligence Artificielle' : 'Tableau de Bord Propriétaire'}
+                  {activeNav === 'evaluation' ? 'Catalogue Intelligence Artificielle' : 
+                   activeNav === 'providers' ? 'Réseau de Prestataires' : 'Tableau de Bord Propriétaire'}
                 </div>
                 <div className="text-red-500 font-semibold flex items-center gap-2 text-xs">
                   <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
