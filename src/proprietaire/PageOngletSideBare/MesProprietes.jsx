@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Grid, List, Download, Plus, Edit, Trash2, Eye, MapPin, Home, Building } from 'lucide-react';
-import proprieteService from '../../services/proprieteService';
 
 export default function Properties({ 
   setIsModalOpen,
@@ -9,69 +8,78 @@ export default function Properties({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [viewMode, setViewMode] = useState('grid');
-  const [properties, setProperties] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [statistiques, setStatistiques] = useState({
-    total_proprietes: 0,
-    proprietes_louees: 0,
-    revenus_mensuels: 0,
-    revenus_annuels: 0
+  
+  const [properties, setProperties] = useState([
+    {
+      id: 1,
+      title: "Villa 5 pièces moderne",
+      address: "Cocody Angré, Zone 4",
+      price: 500000,
+      type: "Villa",
+      status: "loué",
+      tenant: "Jean Kouassi",
+      bedrooms: 5,
+      bathrooms: 3,
+      size: "250m²",
+      addedDate: "2024-01-15",
+      image: "🏠"
+    },
+    {
+      id: 2,
+      title: "Studio moderne centre-ville",
+      address: "Yopougon Sicogi",
+      price: 100000,
+      type: "Studio",
+      status: "disponible",
+      tenant: null,
+      bedrooms: 1,
+      bathrooms: 1,
+      size: "45m²",
+      addedDate: "2024-02-01",
+      image: "🏢"
+    },
+    {
+      id: 3,
+      title: "Appartement 3 pièces",
+      address: "Marcory Résidentiel",
+      price: 250000,
+      type: "Appartement",
+      status: "en_vente",
+      tenant: null,
+      bedrooms: 3,
+      bathrooms: 2,
+      size: "120m²",
+      addedDate: "2024-01-30",
+      image: "🏘️"
+    },
+    {
+      id: 4,
+      title: "Duplex luxueux",
+      address: "Riviera Golf, Cocody",
+      price: 800000,
+      type: "Duplex",
+      status: "loué",
+      tenant: "Marie Diallo",
+      bedrooms: 4,
+      bathrooms: 3,
+      size: "300m²",
+      addedDate: "2024-02-10",
+      image: "🏛️"
+    }
+  ]);
+
+  const filteredProperties = properties.filter(property => {
+    const matchesSearch = property.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          property.address.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || property.status === statusFilter;
+    return matchesSearch && matchesStatus;
   });
-
-  // Charger les propriétés au montage du composant
-  useEffect(() => {
-    chargerProprietes();
-    chargerStatistiques();
-  }, []);
-
-  // Recharger les propriétés lors du changement de filtres
-  useEffect(() => {
-    chargerProprietes();
-  }, [searchTerm, statusFilter]);
-
-  const chargerProprietes = async () => {
-    try {
-      setLoading(true);
-      const data = await proprieteService.rechercherProprietes(searchTerm, statusFilter);
-      
-      // S'assurer que data est un tableau
-      let proprietesArray = [];
-      if (Array.isArray(data)) {
-        proprietesArray = data;
-      } else if (data && Array.isArray(data.results)) {
-        proprietesArray = data.results;
-      } else if (data && typeof data === 'object') {
-        proprietesArray = Object.values(data);
-      }
-      
-      setProperties(proprietesArray);
-      setError(null);
-    } catch (err) {
-      setError('Erreur lors du chargement des propriétés');
-      console.error('Erreur détaillée:', err);
-      setProperties([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const chargerStatistiques = async () => {
-    try {
-      const stats = await proprieteService.obtenirStatistiques();
-      setStatistiques(stats);
-    } catch (err) {
-      console.error('Erreur lors du chargement des statistiques:', err);
-    }
-  };
-
-  const filteredProperties = Array.isArray(properties) ? properties : [];
 
   const getStatusConfig = (status) => {
     switch (status) {
       case 'disponible':
         return { label: 'Disponible', bg: 'bg-green-50', text: 'text-green-700', dot: 'bg-green-500' };
-      case 'loue':
+      case 'loué':
         return { label: 'Loué', bg: 'bg-red-50', text: 'text-red-700', dot: 'bg-red-500' };
       case 'en_vente':
         return { label: 'En vente', bg: 'bg-blue-50', text: 'text-blue-700', dot: 'bg-blue-500' };
@@ -80,22 +88,14 @@ export default function Properties({
     }
   };
 
-  const handlePropertyAction = async (action, property) => {
+  const handlePropertyAction = (action, property) => {
     switch (action) {
       case 'edit':
-        setIsModalOpen(true, property);
+        alert(`Modifier: ${property.title}`);
         break;
       case 'delete':
         if (window.confirm(`Êtes-vous sûr de vouloir supprimer "${property.title}" ?`)) {
-          try {
-            await proprieteService.supprimerPropriete(property.id);
-            await chargerProprietes();
-            await chargerStatistiques();
-            alert('Propriété supprimée avec succès');
-          } catch (err) {
-            alert('Erreur lors de la suppression de la propriété');
-            console.error(err);
-          }
+          setProperties(properties.filter(p => p.id !== property.id));
         }
         break;
       case 'view':
@@ -106,25 +106,8 @@ export default function Properties({
     }
   };
 
-  const exportData = async () => {
-    try {
-      const data = await proprieteService.exporterDonnees();
-      
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `proprietes_export_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-      
-      alert('Données exportées avec succès');
-    } catch (err) {
-      alert('Erreur lors de l\'exportation des données');
-      console.error(err);
-    }
+  const exportData = () => {
+    alert('Exportation des données en cours...');
   };
 
   const [isVisible, setIsVisible] = useState(false);
@@ -132,17 +115,6 @@ export default function Properties({
   useEffect(() => {
     setTimeout(() => setIsVisible(true), 100);
   }, []);
-
-  if (loading && properties.length === 0) {
-    return (
-      <div className="flex-1 p-6 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto mb-4"></div>
-          <p className="text-gray-500">Chargement des propriétés...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className={`
@@ -165,13 +137,6 @@ export default function Properties({
         </button>
       </div>
 
-      {/* Affichage erreur */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-6">
-          {error}
-        </div>
-      )}
-
       {/* Barre de filtres */}
       <div className="bg-white rounded-2xl shadow-sm p-4 mb-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -179,7 +144,7 @@ export default function Properties({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="text"
-              placeholder="Rechercher par titre, adresse ou type..."
+              placeholder="Rechercher par titre, quartier ou type..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent transition-shadow duration-300"
@@ -193,7 +158,7 @@ export default function Properties({
             >
               <option value="all">Tous les statuts</option>
               <option value="disponible">Disponible</option>
-              <option value="loue">Loué</option>
+              <option value="loué">Loué</option>
               <option value="en_vente">En vente</option>
             </select>
             <div className="flex border border-gray-200 rounded-xl overflow-hidden">
@@ -226,19 +191,19 @@ export default function Properties({
         <StatCard
           icon={<Home size={24} />}
           iconBg="from-green-400 to-teal-500"
-          value={statistiques.total_proprietes}
+          value={properties.length}
           label="Total propriétés"
         />
         <StatCard
           icon={<Building size={24} />}
           iconBg="from-red-400 to-orange-500"
-          value={statistiques.proprietes_louees}
+          value={properties.filter(p => p.status === 'loué').length}
           label="Propriétés louées"
         />
         <StatCard
           icon="💰"
           iconBg="from-blue-400 to-indigo-500"
-          value={formatCurrency(statistiques.revenus_mensuels)}
+          value={formatCurrency(properties.filter(p => p.status === 'loué').reduce((sum, p) => sum + p.price, 0))}
           label="Revenus mensuels"
         />
       </div>
@@ -253,7 +218,7 @@ export default function Properties({
               formatCurrency={formatCurrency}
               getStatusConfig={getStatusConfig}
               handlePropertyAction={handlePropertyAction}
-              isNew={new Date(property.created_at) > new Date(Date.now() - 7*24*60*60*1000)}
+              isNew={new Date(property.addedDate) > new Date(Date.now() - 7*24*60*60*1000)}
             />
           ))}
         </div>
@@ -285,7 +250,7 @@ export default function Properties({
         </div>
       )}
 
-      {filteredProperties.length === 0 && !loading && (
+      {filteredProperties.length === 0 && (
         <div className="text-center py-16 bg-white rounded-2xl shadow-sm">
           <div className="text-6xl mb-4">🏠</div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">Aucune propriété trouvée</h3>
@@ -327,21 +292,12 @@ function StatCard({ icon, iconBg, value, label }) {
 // Sous-composant pour les cartes en vue grille
 function PropertyCard({ property, formatCurrency, getStatusConfig, handlePropertyAction, isNew }) {
   const statusConfig = getStatusConfig(property.status);
-  
   return (
     <div className="bg-white rounded-2xl shadow-md overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
       <div className="relative">
-        {property.image_url ? (
-          <img 
-            src={property.image_url} 
-            alt={property.title}
-            className="w-full h-48 object-cover"
-          />
-        ) : (
-          <div className="w-full h-48 bg-gradient-to-br from-red-400 to-orange-500 flex items-center justify-center text-white text-6xl">
-            {property.icon || '🏠'}
-          </div>
-        )}
+        <div className="w-full h-48 bg-gradient-to-br from-red-400 to-orange-500 flex items-center justify-center text-white text-6xl">
+          {property.image}
+        </div>
         {isNew && (
           <span className="absolute top-3 right-3 bg-orange-500 text-white text-xs px-3 py-1 rounded-full font-medium shadow-sm">
             Nouveau
@@ -398,22 +354,13 @@ function PropertyCard({ property, formatCurrency, getStatusConfig, handlePropert
 // Sous-composant pour les lignes en vue liste
 function PropertyRow({ property, formatCurrency, getStatusConfig, handlePropertyAction }) {
   const statusConfig = getStatusConfig(property.status);
-  
   return (
     <tr className="hover:bg-gray-50 transition-colors">
       <td className="px-6 py-4">
         <div className="flex items-center gap-3">
-          {property.image_url ? (
-            <img 
-              src={property.image_url} 
-              alt={property.title}
-              className="w-10 h-10 rounded-xl object-cover"
-            />
-          ) : (
-            <div className="w-10 h-10 bg-gradient-to-br from-red-400 to-orange-500 rounded-xl flex items-center justify-center text-white text-xl">
-              {property.icon || '🏠'}
-            </div>
-          )}
+          <div className="w-10 h-10 bg-gradient-to-br from-red-400 to-orange-500 rounded-xl flex items-center justify-center text-white text-xl">
+            {property.image}
+          </div>
           <div>
             <div className="font-semibold text-gray-900">{property.title}</div>
             <div className="text-sm text-gray-500">{property.type} • {property.size}</div>
