@@ -1,7 +1,5 @@
-"use client";
 import React, { useState, useEffect, useCallback } from 'react';
-
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api';
+import documentService from '../../services/documentService';
 
 export default function ContratsDocuments() {
     // États
@@ -23,36 +21,19 @@ export default function ContratsDocuments() {
             setLoading(true);
             setError(null);
             
-            const url = selectedCategory !== 'all' 
-                ? `${API_BASE_URL}/documents/?category=${selectedCategory}`
-                : `${API_BASE_URL}/documents/`;
-            
-            console.log('🔍 Fetching documents from:', url);
-            
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                }
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+            const params = {};
+            if (selectedCategory !== 'all') {
+                params.category = selectedCategory;
             }
             
-            const data = await response.json();
-            console.log('✅ Documents loaded:', data);
+            console.log('🔍 Chargement des documents avec params:', params);
             
-            // Gérer différents formats de réponse
-            if (Array.isArray(data)) {
-                setDocuments(data);
-            } else if (data.results) {
-                setDocuments(data.results);
-            } else {
-                setDocuments([]);
-            }
+            const data = await documentService.obtenirTousDocuments(params);
+            console.log('✅ Documents chargés:', data);
+            
+            setDocuments(data);
         } catch (error) {
-            console.error('❌ Error fetching documents:', error);
+            console.error('❌ Erreur:', error);
             setError(error.message);
         } finally {
             setLoading(false);
@@ -62,22 +43,11 @@ export default function ContratsDocuments() {
     // Fonction pour charger les statistiques
     const fetchStatistics = useCallback(async () => {
         try {
-            const response = await fetch(`${API_BASE_URL}/documents/statistics/`, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                }
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            console.log('📊 Statistics loaded:', data);
+            const data = await documentService.obtenirStatistiques();
+            console.log('📊 Statistiques chargées:', data);
             setStatistics(data);
         } catch (error) {
-            console.error('❌ Error fetching statistics:', error);
+            console.error('❌ Erreur statistiques:', error);
         }
     }, []);
 
@@ -88,29 +58,12 @@ export default function ContratsDocuments() {
         fetchStatistics();
     }, [fetchDocuments, fetchStatistics]);
 
-    // Effet pour recharger quand la catégorie change
-    useEffect(() => {
-        fetchDocuments();
-    }, [fetchDocuments]);
-
     // Upload multiple de fichiers
     const uploadMultiple = useCallback(async (files, additionalData = {}) => {
         try {
             setUploading(true);
             setUploadProgress(0);
-            const formData = new FormData();
             
-            // Ajouter tous les fichiers
-            files.forEach(file => {
-                formData.append('files', file);
-            });
-            
-            // Ajouter les métadonnées
-            formData.append('category', additionalData.category || selectedCategory);
-            if (additionalData.tenant) formData.append('tenant', additionalData.tenant);
-            if (additionalData.property) formData.append('property', additionalData.property);
-            if (additionalData.status) formData.append('status', additionalData.status);
-
             // Animation de progression
             const progressInterval = setInterval(() => {
                 setUploadProgress(prev => {
@@ -122,20 +75,18 @@ export default function ContratsDocuments() {
                 });
             }, 200);
 
-            const response = await fetch(`${API_BASE_URL}/documents/upload-multiple/`, {
-                method: 'POST',
-                body: formData,
-            });
+            const metadata = {
+                category: additionalData.category || selectedCategory,
+                tenant: additionalData.tenant || 'Non spécifié',
+                property: additionalData.property || 'Non spécifiée',
+                status: additionalData.status || 'active'
+            };
+
+            const result = await documentService.uploadMultiple(files, metadata);
 
             clearInterval(progressInterval);
             setUploadProgress(100);
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Erreur lors de l\'upload');
-            }
-
-            const result = await response.json();
             console.log('✅ Upload result:', result);
             
             alert(`${result.total_uploaded} fichier(s) uploadé(s) avec succès!`);
@@ -161,14 +112,7 @@ export default function ContratsDocuments() {
         }
 
         try {
-            const response = await fetch(`${API_BASE_URL}/documents/${id}/`, {
-                method: 'DELETE',
-            });
-
-            if (!response.ok) {
-                throw new Error('Erreur lors de la suppression');
-            }
-
+            await documentService.supprimerDocument(id);
             alert('Document supprimé avec succès!');
             
             if (selectedDocument?.id === id) {
@@ -190,13 +134,7 @@ export default function ContratsDocuments() {
     // Télécharger un document
     const downloadDocument = useCallback(async (id, title) => {
         try {
-            const response = await fetch(`${API_BASE_URL}/documents/${id}/download/`);
-            
-            if (!response.ok) {
-                throw new Error('Erreur lors du téléchargement');
-            }
-
-            const blob = await response.blob();
+            const blob = await documentService.telechargerDocument(id);
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
@@ -215,18 +153,10 @@ export default function ContratsDocuments() {
     const previewDocument = useCallback(async (id) => {
         try {
             // Fetch document metadata
-            const metadataResponse = await fetch(`${API_BASE_URL}/documents/${id}/`);
-            if (!metadataResponse.ok) {
-                throw new Error('Erreur lors de la récupération des métadonnées');
-            }
-            const metadata = await metadataResponse.json();
+            const metadata = await documentService.obtenirDocument(id);
 
             // Fetch PDF as blob
-            const pdfResponse = await fetch(`${API_BASE_URL}/documents/${id}/preview/`);
-            if (!pdfResponse.ok) {
-                throw new Error('Erreur lors du chargement du PDF');
-            }
-            const pdfBlob = await pdfResponse.blob();
+            const pdfBlob = await documentService.previsualiserDocument(id);
             const localUrl = URL.createObjectURL(pdfBlob);
 
             // Set document with local URL
@@ -277,9 +207,7 @@ export default function ContratsDocuments() {
     ];
 
     // Documents filtrés
-    const filteredDocuments = selectedCategory === 'all' 
-        ? documents 
-        : documents.filter(doc => doc.category === selectedCategory);
+    const filteredDocuments = documents;
 
     // Couleur du statut
     const getStatusColor = (status) => {

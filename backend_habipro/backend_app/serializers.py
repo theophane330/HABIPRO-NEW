@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Document
+from .models import Document, Propriete
 from PyPDF2 import PdfReader
 import io
 
@@ -129,3 +129,135 @@ class DocumentUploadSerializer(serializers.Serializer):
                     f"Le fichier {file.name} n'est pas un PDF. Seuls les fichiers PDF sont acceptés."
                 )
         return files
+
+
+class ProprieteSerializer(serializers.ModelSerializer):
+    """Serializer pour le modèle Propriete avec support bidirectionnel"""
+    
+    proprietaire_nom = serializers.CharField(source='proprietaire.username', read_only=True)
+    
+    # Champs optionnels pour recevoir les données du frontend
+    title = serializers.CharField(write_only=True, required=False)
+    address = serializers.CharField(write_only=True, required=False)
+    price = serializers.DecimalField(max_digits=12, decimal_places=2, write_only=True, required=False)
+    type = serializers.CharField(write_only=True, required=False)
+    status = serializers.CharField(write_only=True, required=False)
+    tenant = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
+    bedrooms = serializers.IntegerField(write_only=True, required=False)
+    bathrooms = serializers.IntegerField(write_only=True, required=False)
+    size = serializers.CharField(write_only=True, required=False)
+    
+    class Meta:
+        model = Propriete
+        fields = [
+            'id',
+            'proprietaire',
+            'proprietaire_nom',
+            'titre',
+            'adresse',
+            'prix',
+            'type_propriete',
+            'statut',
+            'locataire',
+            'nombre_chambres',
+            'nombre_salles_bain',
+            'superficie',
+            'description',
+            'image',
+            'date_ajout',
+            'date_modification',
+            # Champs frontend
+            'title',
+            'address',
+            'price',
+            'type',
+            'status',
+            'tenant',
+            'bedrooms',
+            'bathrooms',
+            'size'
+        ]
+        read_only_fields = ['id', 'date_ajout', 'date_modification', 'proprietaire']
+    
+    def validate(self, data):
+        """
+        Transforme les données du frontend vers le format backend
+        """
+        # Mapper les champs du frontend vers le backend
+        field_mapping = {
+            'title': 'titre',
+            'address': 'adresse',
+            'price': 'prix',
+            'type': 'type_propriete',
+            'status': 'statut',
+            'tenant': 'locataire',
+            'bedrooms': 'nombre_chambres',
+            'bathrooms': 'nombre_salles_bain',
+            'size': 'superficie'
+        }
+        
+        # Créer un nouveau dictionnaire avec les bons noms de champs
+        transformed_data = {}
+        
+        # Transformer les champs du frontend
+        for frontend_key, backend_key in field_mapping.items():
+            if frontend_key in data:
+                transformed_data[backend_key] = data[frontend_key]
+        
+        # Ajouter les autres champs qui sont déjà au bon format
+        for key, value in data.items():
+            if key not in field_mapping and key not in field_mapping.values():
+                transformed_data[key] = value
+        
+        # ✅ CORRECTION CRITIQUE: Conserver les champs backend s'ils existent déjà
+        backend_fields = ['titre', 'adresse', 'prix', 'type_propriete', 'statut', 
+                          'locataire', 'nombre_chambres', 'nombre_salles_bain', 
+                          'superficie', 'description', 'image']
+        
+        for field in backend_fields:
+            if field in data and field not in transformed_data:
+                transformed_data[field] = data[field]
+        
+        # Valider le statut
+        if 'statut' in transformed_data:
+            valid_statuts = [choice[0] for choice in Propriete.STATUT_CHOICES]
+            if transformed_data['statut'] not in valid_statuts:
+                raise serializers.ValidationError({
+                    'statut': f"Statut invalide. Choix possibles: {', '.join(valid_statuts)}"
+                })
+        
+        # Valider le type de propriété
+        if 'type_propriete' in transformed_data:
+            valid_types = [choice[0] for choice in Propriete.TYPE_CHOICES]
+            if transformed_data['type_propriete'] not in valid_types:
+                raise serializers.ValidationError({
+                    'type_propriete': f"Type invalide. Choix possibles: {', '.join(valid_types)}"
+                })
+        
+        # Gérer le locataire vide
+        if 'locataire' in transformed_data:
+            if transformed_data['locataire'] in [None, '', 'null']:
+                transformed_data['locataire'] = None
+        
+        return transformed_data
+    
+    def to_representation(self, instance):
+        """
+        Transforme les données du backend vers le format frontend
+        """
+        return {
+            'id': instance.id,
+            'title': instance.titre,
+            'address': instance.adresse,
+            'price': float(instance.prix),
+            'type': instance.type_propriete,
+            'status': instance.statut,
+            'tenant': instance.locataire,
+            'bedrooms': instance.nombre_chambres,
+            'bathrooms': instance.nombre_salles_bain,
+            'size': instance.superficie,
+            'description': instance.description or '',
+            'image': instance.image,
+            'addedDate': instance.date_ajout,
+            'modifiedDate': instance.date_modification
+        }

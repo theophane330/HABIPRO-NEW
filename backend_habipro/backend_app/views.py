@@ -1,17 +1,21 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated, AllowAny  # Ajout de AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from django.db.models import Q, Count
-from django.http import FileResponse, HttpResponse
-from .models import Document
+from django.db.models import Q, Sum, Count
+from django.http import FileResponse
+from django.utils import timezone
+from datetime import datetime
+
+from .models import Document, Propriete
 from .serializers import (
     DocumentSerializer, 
     DocumentListSerializer,
-    DocumentUploadSerializer
+    DocumentUploadSerializer,
+    ProprieteSerializer
 )
-import io
-from datetime import datetime
+
 
 class DocumentViewSet(viewsets.ModelViewSet):
     """
@@ -20,6 +24,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
     queryset = Document.objects.all()
     serializer_class = DocumentSerializer
     parser_classes = (MultiPartParser, FormParser, JSONParser)
+    permission_classes = [AllowAny]  # ✅ Changé pour permettre l'accès sans authentification
     
     def get_serializer_class(self):
         """Retourne le serializer approprié selon l'action"""
@@ -68,9 +73,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
         return queryset.order_by('-date', '-created_at')
     
     def create(self, request, *args, **kwargs):
-        """
-        Crée un nouveau document
-        """
+        """Crée un nouveau document"""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
@@ -86,9 +89,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
         )
     
     def update(self, request, *args, **kwargs):
-        """
-        Met à jour un document
-        """
+        """Met à jour un document"""
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
@@ -101,9 +102,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
         })
     
     def destroy(self, request, *args, **kwargs):
-        """
-        Supprime un document
-        """
+        """Supprime un document"""
         instance = self.get_object()
         self.perform_destroy(instance)
         return Response(
@@ -113,9 +112,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['post'], url_path='upload-multiple')
     def upload_multiple(self, request):
-        """
-        Upload multiple de documents PDF
-        """
+        """Upload multiple de documents PDF"""
         serializer = DocumentUploadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
@@ -130,7 +127,6 @@ class DocumentViewSet(viewsets.ModelViewSet):
         
         for file in files:
             try:
-                # Créer le document
                 document_data = {
                     'title': file.name.replace('.pdf', ''),
                     'category': category,
@@ -172,9 +168,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['get'], url_path='download')
     def download(self, request, pk=None):
-        """
-        Télécharge un document
-        """
+        """Télécharge un document"""
         document = self.get_object()
         
         if not document.file:
@@ -198,9 +192,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['get'], url_path='preview')
     def preview(self, request, pk=None):
-        """
-        Prévisualise un document (inline)
-        """
+        """Prévisualise un document (inline)"""
         document = self.get_object()
         
         if not document.file:
@@ -224,9 +216,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'], url_path='statistics')
     def statistics(self, request):
-        """
-        Retourne les statistiques sur les documents
-        """
+        """Retourne les statistiques sur les documents"""
         stats = {
             'total': Document.objects.count(),
             'by_category': {},
@@ -261,3 +251,141 @@ class DocumentViewSet(viewsets.ModelViewSet):
             'insurance': 'Police d\'assurance'
         }
         return types_map.get(category, 'Document')
+
+
+class ProprieteViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet pour gérer les propriétés immobilières
+    """
+    queryset = Propriete.objects.all()
+    serializer_class = ProprieteSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre', 'adresse', 'type_propriete', 'locataire']
+    ordering_fields = ['date_ajout', 'prix', 'titre']
+    ordering = ['-date_ajout']
+    
+    def get_queryset(self):
+        """
+        Retourner toutes les propriétés (pas de filtre par utilisateur en mode dev)
+        """
+        queryset = Propriete.objects.all()
+        
+        # Filtrer par statut si spécifié
+        statut = self.request.query_params.get('statut', None)
+        if statut and statut != 'all':
+            queryset = queryset.filter(statut=statut)
+        
+        # Recherche par terme
+        search_term = self.request.query_params.get('search', None)
+        if search_term:
+            queryset = queryset.filter(
+                Q(titre__icontains=search_term) |
+                Q(adresse__icontains=search_term) |
+                Q(type_propriete__icontains=search_term) |
+                Q(locataire__icontains=search_term)
+            )
+        
+        return queryset
+    
+    def perform_create(self, serializer):
+        """
+        Assigner automatiquement le propriétaire si authentifié
+        """
+        if self.request.user.is_authenticated:
+            serializer.save(proprietaire=self.request.user)
+        else:
+            # En mode dev, créer avec un utilisateur par défaut si nécessaire
+            from django.contrib.auth.models import User
+            default_user = User.objects.first()
+            if default_user:
+                serializer.save(proprietaire=default_user)
+            else:
+                raise ValueError("Aucun utilisateur disponible dans la base de données")
+    
+    def create(self, request, *args, **kwargs):
+        """
+        Créer une nouvelle propriété
+        ✅ Plus besoin de transformer manuellement les données - le serializer s'en charge
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
+    def update(self, request, *args, **kwargs):
+        """
+        Mettre à jour une propriété
+        ✅ Plus besoin de transformer manuellement les données - le serializer s'en charge
+        """
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def statistiques(self, request):
+        """
+        Obtenir les statistiques des propriétés
+        """
+        proprietes = self.get_queryset()
+        
+        total_proprietes = proprietes.count()
+        proprietes_louees = proprietes.filter(statut='loué').count()
+        proprietes_disponibles = proprietes.filter(statut='disponible').count()
+        proprietes_en_vente = proprietes.filter(statut='en_vente').count()
+        
+        # Calculer les revenus mensuels (somme des prix des propriétés louées)
+        revenus_mensuels = proprietes.filter(statut='loué').aggregate(
+            total=Sum('prix')
+        )['total'] or 0
+        
+        return Response({
+            'total_proprietes': total_proprietes,
+            'proprietes_louees': proprietes_louees,
+            'proprietes_disponibles': proprietes_disponibles,
+            'proprietes_en_vente': proprietes_en_vente,
+            'revenus_mensuels': float(revenus_mensuels)
+        })
+    
+    @action(detail=False, methods=['get'])
+    def export(self, request):
+        """
+        Exporter les données des propriétés
+        """
+        proprietes = self.get_queryset()
+        serializer = self.get_serializer(proprietes, many=True)
+        return Response({
+            'data': serializer.data,
+            'total': proprietes.count(),
+            'date_export': timezone.now()
+        })
+    
+    @action(detail=True, methods=['post'])
+    def changer_statut(self, request, pk=None):
+        """
+        Changer le statut d'une propriété
+        """
+        propriete = self.get_object()
+        nouveau_statut = request.data.get('statut')
+        
+        if nouveau_statut not in dict(Propriete.STATUT_CHOICES):
+            return Response(
+                {'erreur': 'Statut invalide'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        propriete.statut = nouveau_statut
+        
+        # Si le statut change à "disponible", retirer le locataire
+        if nouveau_statut == 'disponible':
+            propriete.locataire = None
+        
+        propriete.save()
+        serializer = self.get_serializer(propriete)
+        return Response(serializer.data)
