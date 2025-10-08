@@ -1,10 +1,12 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import DocumentViewSet
+from .views import DocumentViewSet, ProprieteViewSet
 
 # Créer le router pour les ViewSets
 router = DefaultRouter()
 router.register(r'documents', DocumentViewSet, basename='document')
+router.register(r'proprietes', ProprieteViewSet, basename='propriete')
+
 
 # URLs de l'application
 urlpatterns = [
