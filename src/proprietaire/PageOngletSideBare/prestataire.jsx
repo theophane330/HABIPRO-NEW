@@ -1,9 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const Prestataire = ({ setIsPrestatairesModalOpen }) => {
+  const [isVisible, setIsVisible] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('tous');
   const [selectedPrestataire, setSelectedPrestataire] = useState(null);
+
+useEffect(() => {
+        setTimeout(() => setIsVisible(true), 100);
+    }, []);
 
   // Données des prestataires
   const prestataires = [
@@ -186,7 +191,12 @@ const Prestataire = ({ setIsPrestatairesModalOpen }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    // <div className="min-h-screen bg-slate-50">
+    <div className={`
+            min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50
+            transform transition-all duration-700 ease-out
+            ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}
+        `}>
       {/* Header Section */}
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-6 py-8">

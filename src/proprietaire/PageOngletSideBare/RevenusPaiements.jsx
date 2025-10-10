@@ -110,7 +110,12 @@ export default function RevenusPaiements() {
     });
 
     return (
-        <div className={`min-h-screen bg-gray-50 p-6 transition-all duration-700 ease-out ${isVisible ? 'opacity-100' : 'opacity-0'}`}>
+        // <div className={`min-h-screen bg-gray-50 p-6 transition-all duration-700 ease-out ${isVisible ? 'opacity-100' : 'opacity-0'}`}>
+        <div className={`
+            min-h-screen bg-gradient-to-br p-6 from-slate-50 via-white to-slate-50
+            transform transition-all duration-700 ease-out
+            ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}
+        `}>
             <div className="max-w-7xl mx-auto space-y-6">
                 {/* En-tête */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
