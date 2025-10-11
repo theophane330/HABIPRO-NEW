@@ -6,6 +6,7 @@ import ContractFormModal from "./ActionsRapides/CréerContrat";
 import NouvelleAnnonceModal from "./ActionsRapides/PublierAnnonce";
 import EvaluationIAModal from "./ActionsRapides/ÉvaluationIA";
 import NouveauPrestataireModal from "./ActionsRapides/Prestataires";
+import AnnonceDetailModal from "./ActionsRapides/DetailAnnonce";
 
 import TableaudeBord from "./PageOngletSideBare/TableaudeBord";
 import Properties from "./PageOngletSideBare/MesProprietes";
@@ -14,6 +15,14 @@ import EvaluationIA from "./PageOngletSideBare/EvaluationIA";
 import RevenusPaiements from "./PageOngletSideBare/RevenusPaiements";
 import ContratsDocuments from "./PageOngletSideBare/ContratsDocuments";
 import Prestataire from "./PageOngletSideBare/prestataire";
+import PublierAnnoncePage from "./PageOngletSideBare/PublierAnnoncePage";
+import MarketingIAPage from "./PageOngletSideBare/MarketingIA";
+import MessagesPage from "./PageOngletSideBare/MessagesPage";
+import BaseReglementairePage from "./PageOngletSideBare/BaseReglementairePage";
+import ParametresPage from "./PageOngletSideBare/ParametresPage";
+import ServicesPublicsPage from "./PageOngletSideBare/ServicesPublicsPage";
+import SupportExpert from "./PageOngletSideBare/SupportExpert";
+import GestionAvancee from "./PageOngletSideBare/Gestionavancee";
 
 export default function ProprietaireDashboard() {
   const [activeNav, setActiveNav] = useState('dashboard');
@@ -22,6 +31,92 @@ export default function ProprietaireDashboard() {
   const [revenueValue, setRevenueValue] = useState(2450000);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // Gestionnaires d'événements
+  const handlePropertyClick = (property) => {
+    console.log('Property clicked:', property);
+  };
+
+  const handleTenantClick = (tenant) => {
+    console.log('Tenant clicked:', tenant);
+  };
+
+  const handleNotificationClick = (notification) => {
+    console.log('Notification clicked:', notification);
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('fr-FR', {
+      style: 'currency',
+      currency: 'XOF',
+      minimumFractionDigits: 0
+    }).format(amount);
+  };
+
+  // Données pour le tableau de bord
+  const [properties, setProperties] = useState([
+    {
+      id: 1,
+      name: "Résidence Les Palmiers",
+      location: "Cocody",
+      type: "Appartement",
+      status: "Occupé",
+      revenue: 350000,
+      image: "/images/property1.jpg"
+    },
+    {
+      id: 2,
+      name: "Villa Bietry",
+      location: "Zone 4",
+      type: "Villa",
+      status: "Disponible",
+      revenue: 450000,
+      image: "/images/property2.jpg"
+    }
+  ]);
+
+  const [tenants, setTenants] = useState([
+    {
+      id: 1,
+      name: "Konan Patrick",
+      property: "Résidence Les Palmiers",
+      status: "À jour",
+      rentAmount: 350000,
+      contact: "+225 0789451234"
+    },
+    {
+      id: 2,
+      name: "Kouamé Sarah",
+      property: "Villa Bietry",
+      status: "En retard",
+      rentAmount: 450000,
+      contact: "+225 0565789012"
+    }
+  ]);
+
+  const [notifications, setNotifications] = useState([
+    {
+      id: 1,
+      type: "payment",
+      message: "Paiement reçu de Konan Patrick",
+      date: "2025-10-09",
+      isRead: false
+    },
+    {
+      id: 2,
+      type: "maintenance",
+      message: "Demande de réparation - Villa Bietry",
+      date: "2025-10-08",
+      isRead: false
+    },
+    {
+      id: 3,
+      type: "contract",
+      message: "Contrat expirant dans 30 jours - Résidence Les Palmiers",
+      date: "2025-10-07",
+      isRead: true
+    }
+  ]);
 
   // Pour le contenu de la page 
   const renderContent = () => {
@@ -34,6 +129,7 @@ export default function ProprietaireDashboard() {
           setIsAnnonceModalOpen={setIsAnnonceModalOpen}
           setIsÉvaluationIAModalOpen={setIsÉvaluationIAModalOpen}
           setIsPrestatairesModalOpen={setIsPrestatairesModalOpen}
+          setIsAnnonceDetailModal={setIsAnnonceDetailModal}
           formatCurrency={formatCurrency}
           properties={properties}
           tenants={tenants}
@@ -49,7 +145,29 @@ export default function ProprietaireDashboard() {
       case 'revenue': return <RevenusPaiements formatCurrency={formatCurrency} />;
       case 'contracts': return <ContratsDocuments />;
       case 'providers': return <Prestataire setIsPrestatairesModalOpen={setIsPrestatairesModalOpen} />;
-      default: return <TableaudeBord />;
+      // case 'advertising': return <PublierAnnoncePage setIsAnnonceModalOpen={setIsAnnonceModalOpen} />;
+      case 'advertising':
+        return <PublierAnnoncePage
+          setIsAnnonceModalOpen={setIsAnnonceModalOpen}
+          setIsAnnonceDetailModal={setIsAnnonceDetailModal}
+          setSelectedAnnonceDetail={setSelectedAnnonceDetail}
+        />;
+      case 'marketing':
+        return <MarketingIAPage />;
+      case 'messages':
+        return <MessagesPage />;
+      case 'legal':
+        return <BaseReglementairePage />;
+      case 'public':
+        return <ServicesPublicsPage />;
+      case 'support':
+        return <SupportExpert />;
+      case 'advanced':
+        return <GestionAvancee />;
+      case 'settings':
+        return <ParametresPage />;
+      default:
+        return <TableaudeBord />;
     }
   };
 
@@ -60,6 +178,8 @@ export default function ProprietaireDashboard() {
   const [isAnnonceModalOpen, setIsAnnonceModalOpen] = useState(false);
   const [isÉvaluationIAModalOpen, setIsÉvaluationIAModalOpen] = useState(false);
   const [isPrestatairesModalOpen, setIsPrestatairesModalOpen] = useState(false);
+  const [isAnnonceDetailModal, setIsAnnonceDetailModal] = useState(false);
+  const [selectedAnnonceDetail, setSelectedAnnonceDetail] = useState(null);
 
   const closeModal = () => {
     setIsModalOpen(false);
@@ -85,6 +205,11 @@ export default function ProprietaireDashboard() {
     setIsPrestatairesModalOpen(false);
   };
 
+  const closeAnnonceDetailModal = () => {
+    setIsAnnonceDetailModal(false);
+  };
+
+
   // Toggle sidebar function
   const toggleSidebar = () => {
     setIsSidebarCollapsed(!isSidebarCollapsed);
@@ -106,14 +231,10 @@ export default function ProprietaireDashboard() {
     return () => clearInterval(revenueTimer);
   }, []);
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('fr-FR').format(amount) + ' FCFA';
-  };
-
   const navItems = [
     { id: 'dashboard', icon: '📊', label: 'Tableau de bord', active: true },
-    { id: 'properties', icon: '🏢', label: 'Mes Propriétés'},
-    { id: 'tenants', icon: '👥', label: 'Gestion Locataires'},
+    { id: 'properties', icon: '🏢', label: 'Mes Propriétés' },
+    { id: 'tenants', icon: '👥', label: 'Gestion Locataires' },
     { id: 'revenue', icon: '💰', label: 'Revenus & Paiements' },
     { id: 'contracts', icon: '📄', label: 'Contrats & Documents' },
   ];
@@ -172,130 +293,19 @@ export default function ProprietaireDashboard() {
     },
   ];
 
-  const properties = [
-    {
-      id: 1,
-      title: 'Appartement Cocody Riviera',
-      type: '3 pièces',
-      size: '85m²',
-      rent: 280000,
-      status: 'occupied',
-      icon: '🏢'
-    },
-    {
-      id: 2,
-      title: 'Villa Angré 7ème Tranche',
-      type: '5 pièces',
-      size: '180m²',
-      rent: 450000,
-      status: 'occupied',
-      icon: '🏠'
-    },
-    {
-      id: 3,
-      title: 'Studio Plateau Centre',
-      type: '1 pièce',
-      size: '35m²',
-      rent: 120000,
-      status: 'vacant',
-      icon: '🏘️'
-    },
-  ];
-
-  const tenants = [
-    {
-      id: 1,
-      name: 'Kader Adeniran',
-      initials: 'KA',
-      property: 'Appartement Cocody Riviera',
-      rent: 280000,
-      status: 'active'
-    },
-    {
-      id: 2,
-      name: 'Marie Koné',
-      initials: 'MK',
-      property: 'Villa Angré',
-      rent: 450000,
-      status: 'active'
-    },
-    {
-      id: 3,
-      name: 'Jean Soro',
-      initials: 'JS',
-      property: 'Duplex Marcory',
-      rent: 320000,
-      status: 'pending'
-    },
-    {
-      id: 4,
-      name: 'Aminata Bamba',
-      initials: 'AB',
-      property: 'Appartement Yopougon',
-      rent: 180000,
-      status: 'active'
-    },
-  ];
-
-  const notifications = [
-    {
-      id: 1,
-      icon: '⚠️',
-      title: 'Paiement en Retard',
-      text: 'Jean Soro - Loyer janvier non payé',
-      time: 'Il y a 2 jours',
-      gradient: 'from-yellow-400 to-orange-500'
-    },
-    {
-      id: 2,
-      icon: '🔧',
-      title: 'Demande de Maintenance',
-      text: 'Réparation plomberie - Villa Angré',
-      time: 'Il y a 5 heures',
-      gradient: 'from-blue-400 to-blue-600'
-    },
-    {
-      id: 3,
-      icon: '💰',
-      title: 'Paiement Reçu',
-      text: 'Kader Adeniran - Loyer février',
-      time: 'Il y a 1 jour',
-      gradient: 'from-green-400 to-teal-400'
-    },
-    {
-      id: 4,
-      icon: '📈',
-      title: 'Évaluation IA Disponible',
-      text: 'Nouveau rapport pour Studio Plateau',
-      time: 'Il y a 3 jours',
-      gradient: 'from-purple-400 to-indigo-500'
-    },
-  ];
-
   const handleNavClick = (itemId) => {
     setActiveNav(itemId);
   };
 
   const handlePremiumClick = (feature) => {
     if (feature === 'Évaluation IA') {
-      // Rediriger vers le catalogue IA au lieu d'afficher une alerte
       setActiveNav('evaluation');
-    } else {
-      alert(`🚀 Fonctionnalité Premium: ${feature}\n\nAccès aux outils IA avancés pour l'analyse et l'optimisation de votre portefeuille immobilier.`);
+    } else if (feature === 'Marketing IA') {
+      setActiveNav('marketing');
     }
   };
 
-  const handlePropertyClick = (property) => {
-    alert(`Ouverture des détails de ${property.title}...`);
-  };
 
-  const handleTenantClick = (tenant) => {
-    alert(`Ouverture du profil de ${tenant.name}...`);
-  };
-
-  const handleNotificationClick = (notification) => {
-    alert(`Action pour: ${notification.title}`);
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-400 to-orange-500">
@@ -315,7 +325,7 @@ export default function ProprietaireDashboard() {
                 {isSidebarCollapsed ? '→' : '←'}
               </span>
             </button>
-            
+
             {/* Logo Section - Visible seulement si sidebar pas collapsed */}
             {!isSidebarCollapsed && (
               <div className="flex items-center gap-2 p-2">
@@ -394,20 +404,12 @@ export default function ProprietaireDashboard() {
                   href="#"
                   onClick={(e) => {
                     e.preventDefault();
-                    if (item.premium && item.id === 'evaluation') {
-                      // Pour l'évaluation IA, rediriger directement vers le catalogue
-                      handleNavClick('evaluation');
-                    } else if (item.premium) {
-                      handlePremiumClick(item.label);
-                    } else {
-                      handleNavClick(item.id);
-                    }
+                    handleNavClick(item.id);
                   }}
-                  className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : ''} text-sm p-2 rounded-lg mb-1 mr-2 transition-all duration-300 relative overflow-hidden group ${
-                    activeNav === item.id
-                      ? 'text-red-500 bg-gradient-to-r from-red-50 to-orange-50 font-semibold transform translate-x-1 shadow-md'
-                      : 'text-gray-700 hover:text-red-500 hover:transform hover:translate-x-2 hover:shadow-sm'
-                  }`}
+                  className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : ''} text-sm p-2 rounded-lg mb-1 mr-2 transition-all duration-300 relative overflow-hidden group ${activeNav === item.id
+                    ? 'text-red-500 bg-gradient-to-r from-red-50 to-orange-50 font-semibold transform translate-x-1 shadow-md'
+                    : 'text-gray-700 hover:text-red-500 hover:transform hover:translate-x-2 hover:shadow-sm'
+                    }`}
                   title={isSidebarCollapsed ? item.label : ''}
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-red-400 to-orange-500 opacity-0 group-hover:opacity-10 transition-opacity duration-300"></div>
@@ -478,7 +480,7 @@ export default function ProprietaireDashboard() {
                 <div className="text-sm font-bold mb-1 relative z-10">Premium</div>
                 <div className="text-xs opacity-90 mb-2 relative z-10">8 propriétés • 12 locataires</div>
                 <button
-                  onClick={() => alert('Interface de gestion avancée à implémenter')}
+                  onClick={() => handleNavClick('advanced')}
                   className="bg-white/25 backdrop-blur-sm border border-white/30 px-2 py-1 rounded-md text-white font-semibold text-sm transition-all duration-300 hover:bg-white/35 hover:-translate-y-1 hover:shadow-md relative z-10"
                 >
                   Gestion avancée
@@ -496,8 +498,8 @@ export default function ProprietaireDashboard() {
             <div className="flex justify-between items-center gap-3">
               <div className="flex-1">
                 <div className="text-sm font-bold mb-1 bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
-                  {activeNav === 'evaluation' ? 'Catalogue Intelligence Artificielle' : 
-                   activeNav === 'providers' ? 'Réseau de Prestataires' : 'Tableau de Bord Propriétaire'}
+                  {activeNav === 'evaluation' ? 'Catalogue Intelligence Artificielle' :
+                    activeNav === 'providers' ? 'Réseau de Prestataires' : 'Tableau de Bord Propriétaire'}
                 </div>
                 <div className="text-red-500 font-semibold flex items-center gap-2 text-xs">
                   <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
@@ -560,7 +562,7 @@ export default function ProprietaireDashboard() {
                   <div className="text-[10px]">{formatCurrency(revenueValue)}</div>
                 </div>
 
-               {/* User Info - Plus compact */}
+                {/* User Info - Plus compact */}
                 <div className="flex items-center gap-2 p-2 pr-3 bg-white border border-gray-200 rounded-lg cursor-pointer hover:shadow-md hover:transform hover:-translate-y-1 transition-all duration-300">
                   <div className="w-7 h-7 bg-gradient-to-br from-red-400 to-orange-500 rounded-lg flex items-center justify-center text-white font-bold text-xs">
                     AB
@@ -574,8 +576,10 @@ export default function ProprietaireDashboard() {
             </div>
           </div>
 
-          <div className="overflow-y-auto">
-            {renderContent()}
+          <div className="overflow-y-auto flex-1">
+            <div className="h-[calc(100vh-4rem)]">
+              {renderContent()}
+            </div>
           </div>
 
         </div>
@@ -586,7 +590,11 @@ export default function ProprietaireDashboard() {
       <NouvelleAnnonceModal isOpen={isAnnonceModalOpen} onClose={closeAnnonceModal} />
       <EvaluationIAModal isOpen={isÉvaluationIAModalOpen} onClose={closeÉvaluationIAModal} />
       <NouveauPrestataireModal isOpen={isPrestatairesModalOpen} onClose={closePrestatairesModal} />
-
+      <AnnonceDetailModal
+        isOpen={isAnnonceDetailModal}
+        onClose={closeAnnonceDetailModal}
+        annonce={selectedAnnonceDetail}
+      />
     </div>
   );
 }
