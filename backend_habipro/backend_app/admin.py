@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Document
+from .models import Document, Property
 
 @admin.register(Document)
 class DocumentAdmin(admin.ModelAdmin):
@@ -108,3 +108,59 @@ class DocumentAdmin(admin.ModelAdmin):
             f'{updated} document(s) marqué(s) comme terminé(s).'
         )
     mark_as_completed.short_description = "Marquer comme terminé"
+
+@admin.register(Property)
+class PropertyAdmin(admin.ModelAdmin):
+    list_display = [
+        'titre',
+        'adresse',
+        'prix',
+        'type',
+        'statut',
+        'locataire',
+        'chambres',
+        'salles_de_bain',
+        'superficie',
+        'date_ajout'
+    ]
+    
+    list_filter = [
+        'statut',
+        'type',
+        'date_ajout'
+    ]
+    
+    search_fields = [
+        'titre',
+        'adresse',
+        'locataire'
+    ]
+    
+    list_editable = [
+        'statut',
+        'prix'
+    ]
+    
+    ordering = ['-date_ajout']
+    
+    readonly_fields = ['date_ajout']
+    
+    fieldsets = (
+        ('Informations générales', {
+            'fields': ('titre', 'adresse', 'type', 'statut')
+        }),
+        ('Détails financiers', {
+            'fields': ('prix', 'locataire')
+        }),
+        ('Caractéristiques', {
+            'fields': ('chambres', 'salles_de_bain', 'superficie')
+        }),
+        ('Média', {
+            'fields': ('image',)
+        }),
+        ('Dates', {
+            'fields': ('date_ajout',)
+        }),
+    )
+    
+    list_per_page = 20

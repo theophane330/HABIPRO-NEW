@@ -1,7 +1,10 @@
 from django.db import models
-from django.core.validators import FileExtensionValidator
+from django.core.validators import FileExtensionValidator,MinValueValidator
 from django.db.models import Q
+from django.utils.text import slugify
+import uuid
 import os
+
 
 def document_upload_path(instance, filename):
     """Génère le chemin d'upload pour les documents"""
@@ -99,4 +102,51 @@ class Document(models.Model):
             self.size = self.get_file_size()
         super().save(*args, **kwargs)
 
+
+
+def property_image_path(instance, filename):
+    """Génère un chemin de fichier court et unique"""
+    ext = filename.split('.')[-1]
+    # Créer un nom court avec UUID
+    filename = f"{uuid.uuid4().hex[:8]}.{ext}"
+    return os.path.join('properties', filename)
+
+class Property(models.Model):
+    STATUS_CHOICES = [
+        ('disponible', 'Disponible'),
+        ('loué', 'Loué'),
+        ('en_vente', 'En vente'),
+    ]
     
+    TYPE_CHOICES = [
+        ('Villa', 'Villa'),
+        ('Studio', 'Studio'),
+        ('Appartement', 'Appartement'),
+        ('Duplex', 'Duplex'),
+    ]
+    
+    titre = models.CharField(max_length=200, verbose_name="Titre")
+    adresse = models.CharField(max_length=300, verbose_name="Adresse")
+    prix = models.IntegerField(validators=[MinValueValidator(0)], verbose_name="Prix")
+    type = models.CharField(max_length=50, choices=TYPE_CHOICES, verbose_name="Type")
+    statut = models.CharField(max_length=20, choices=STATUS_CHOICES, default='disponible', verbose_name="Statut")
+    locataire = models.CharField(max_length=200, null=True, blank=True, verbose_name="Locataire")
+    chambres = models.IntegerField(validators=[MinValueValidator(0)], verbose_name="Chambres")
+    salles_de_bain = models.IntegerField(validators=[MinValueValidator(0)], verbose_name="Salles de bain")
+    superficie = models.CharField(max_length=50, verbose_name="Superficie")
+    date_ajout = models.DateField(auto_now_add=True, verbose_name="Date d'ajout")
+    image = models.FileField(
+        upload_to=property_image_path, 
+        null=True, 
+        blank=True, 
+        verbose_name="Image/Vidéo",
+        max_length=200  # Augmenter la limite
+    )
+    
+    class Meta:
+        verbose_name = "Propriété"
+        verbose_name_plural = "Propriétés"
+        ordering = ['-date_ajout']
+    
+    def __str__(self):
+        return self.titre

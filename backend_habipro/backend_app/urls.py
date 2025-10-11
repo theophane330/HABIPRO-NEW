@@ -1,17 +1,17 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import DocumentViewSet
+from .views import DocumentViewSet, PropertyViewSet
 
 # Créer le router pour les ViewSets
 router = DefaultRouter()
 router.register(r'documents', DocumentViewSet, basename='document')
+router.register(r'properties', PropertyViewSet, basename='property')
 
 # URLs de l'application
 urlpatterns = [
     # Inclure toutes les routes du router
     path('', include(router.urls)),
 ]
-
 # Les URLs générées automatiquement par le router:
 # 
 # GET    /api/documents/                    - Liste tous les documents

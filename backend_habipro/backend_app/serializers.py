@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Document
+from .models import Document,Property
 from PyPDF2 import PdfReader
 import io
 
@@ -129,3 +129,75 @@ class DocumentUploadSerializer(serializers.Serializer):
                     f"Le fichier {file.name} n'est pas un PDF. Seuls les fichiers PDF sont acceptés."
                 )
         return files
+    
+from rest_framework import serializers
+from .models import Property
+
+
+class PropertySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Property
+        fields = [
+            'id',
+            'titre',
+            'adresse',
+            'prix',
+            'type',
+            'statut',
+            'locataire',
+            'chambres',
+            'salles_de_bain',
+            'superficie',
+            'date_ajout',
+            'image'
+        ]
+        read_only_fields = ['id', 'date_ajout']
+    
+    def validate_prix(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Le prix ne peut pas être négatif.")
+        return value
+    
+    def validate_chambres(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Le nombre de chambres ne peut pas être négatif.")
+        return value
+    
+    def validate_salles_de_bain(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Le nombre de salles de bain ne peut pas être négatif.")
+        return value
+
+class PropertySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Property
+        fields = [
+            'id',
+            'titre',
+            'adresse',
+            'prix',
+            'type',
+            'statut',
+            'locataire',
+            'chambres',
+            'salles_de_bain',
+            'superficie',
+            'date_ajout',
+            'image'
+        ]
+        read_only_fields = ['id', 'date_ajout']
+    
+    def validate_prix(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Le prix ne peut pas être négatif.")
+        return value
+    
+    def validate_chambres(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Le nombre de chambres ne peut pas être négatif.")
+        return value
+    
+    def validate_salles_de_bain(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Le nombre de salles de bain ne peut pas être négatif.")
+        return value
