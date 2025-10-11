@@ -1,14 +1,18 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status,filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db.models import Q, Count
 from django.http import FileResponse, HttpResponse
-from .models import Document
+from .models import Document,Property
+from django_filters.rest_framework import DjangoFilterBackend
+
+
 from .serializers import (
     DocumentSerializer, 
     DocumentListSerializer,
-    DocumentUploadSerializer
+    DocumentUploadSerializer,
+    PropertySerializer
 )
 import io
 from datetime import datetime
@@ -261,3 +265,70 @@ class DocumentViewSet(viewsets.ModelViewSet):
             'insurance': 'Police d\'assurance'
         }
         return types_map.get(category, 'Document')
+    
+class PropertyViewSet(viewsets.ModelViewSet):
+    queryset = Property.objects.all()
+    serializer_class = PropertySerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['statut', 'type']
+    search_fields = ['titre', 'adresse', 'locataire']
+    ordering_fields = ['date_ajout', 'prix', 'titre']
+    ordering = ['-date_ajout']
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        statut = self.request.query_params.get('statut', None)
+        
+        if statut and statut != 'all':
+            queryset = queryset.filter(statut=statut)
+        
+        return queryset
+    
+    @action(detail=False, methods=['get'])
+    def statistiques(self, request):
+        """
+        Endpoint pour obtenir les statistiques des propriétés
+        """
+        total = self.get_queryset().count()
+        louees = self.get_queryset().filter(statut='loué').count()
+        disponibles = self.get_queryset().filter(statut='disponible').count()
+        en_vente = self.get_queryset().filter(statut='en_vente').count()
+        
+        # Calcul des revenus mensuels (propriétés louées)
+        revenus = sum(
+            prop.prix for prop in self.get_queryset().filter(statut='loué')
+        )
+        
+        return Response({
+            'total': total,
+            'louees': louees,
+            'disponibles': disponibles,
+            'en_vente': en_vente,
+            'revenus_mensuels': revenus
+        })
+    
+    @action(detail=False, methods=['get'])
+    def export(self, request):
+        """
+        Endpoint pour exporter les données des propriétés
+        """
+        proprietes = self.get_queryset()
+        serializer = self.get_serializer(proprietes, many=True)
+        
+        return Response({
+            'count': proprietes.count(),
+            'data': serializer.data
+        })
+    
+    def destroy(self, request, *args, **kwargs):
+        """
+        Suppression d'une propriété
+        """
+        instance = self.get_object()
+        titre = instance.titre
+        self.perform_destroy(instance)
+        
+        return Response(
+            {'message': f'La propriété "{titre}" a été supprimée avec succès.'},
+            status=status.HTTP_200_OK
+        )
