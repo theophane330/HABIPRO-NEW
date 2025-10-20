@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-
+AUTH_USER_MODEL = 'backend_app.User'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
@@ -48,18 +48,18 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
-    'django_filters',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-        # Apps tierces
+
+    # Apps tierces
     'rest_framework',
-    'corsheaders',
-    
-    # Votre app
+    'rest_framework.authtoken',  # Pour l'authentification par token
+    'corsheaders',  # Pour gérer les CORS
+    'django_filters',
     'backend_app',
 ]
 SECURE_CROSS_ORIGIN_OPENER_POLICY = None
@@ -76,6 +76,9 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 
     
+]
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
 ]
 
 # CORS Configuration - Ajouter:
@@ -111,6 +114,7 @@ CORS_ALLOW_HEADERS = [
 
 # REST Framework Configuration - Ajouter:
 REST_FRAMEWORK = {
+    
     'DEFAULT_PARSER_CLASSES': [
         'rest_framework.parsers.JSONParser',
         'rest_framework.parsers.MultiPartParser',
@@ -122,6 +126,9 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
     ],
+        'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend'
+    ]
 }
 
 ROOT_URLCONF = 'backend_habipro.urls'

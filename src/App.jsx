@@ -4,7 +4,7 @@ import AuthPage from './components/AuthPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 // Importez vos pages propriétaire et locataire
-import ProprietaireDashboard from './proprietaire/proprietaire';
+import proprietaire from '/proprietaire';
 import LocataireDashboard from './locataire/locataire';
 
 function App() {
@@ -37,7 +37,7 @@ function App() {
           path="/proprietaire/*"
           element={
             <ProtectedRoute allowedRole="proprietaire">
-              <ProprietaireDashboard />
+              <proprietaire />
             </ProtectedRoute>
           }
         />

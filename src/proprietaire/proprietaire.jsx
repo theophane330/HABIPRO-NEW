@@ -1,5 +1,6 @@
-// "use client";
 import React, { useState, useEffect } from 'react';
+import authService from '../services/authService';
+
 import PropertyFormModal from "./ActionsRapides/AjouterProriete";
 import TenantFormModal from "./ActionsRapides/AjouterLocatire";
 import ContractFormModal from "./ActionsRapides/CréerContrat";
@@ -15,13 +16,9 @@ import EvaluationIA from "./PageOngletSideBare/EvaluationIA";
 import RevenusPaiements from "./PageOngletSideBare/RevenusPaiements";
 import ContratsDocuments from "./PageOngletSideBare/ContratsDocuments";
 import Prestataire from "./PageOngletSideBare/prestataire";
-import PublierAnnoncePage from "./PageOngletSideBare/PublierAnnoncePage";
-import MarketingIAPage from "./PageOngletSideBare/MarketingIA";
+
 import MessagesPage from "./PageOngletSideBare/MessagesPage";
-import BaseReglementairePage from "./PageOngletSideBare/BaseReglementairePage";
 import ParametresPage from "./PageOngletSideBare/ParametresPage";
-import ServicesPublicsPage from "./PageOngletSideBare/ServicesPublicsPage";
-import SupportExpert from "./PageOngletSideBare/SupportExpert";
 import GestionAvancee from "./PageOngletSideBare/Gestionavancee";
 
 export default function ProprietaireDashboard() {
@@ -31,6 +28,36 @@ export default function ProprietaireDashboard() {
   const [revenueValue, setRevenueValue] = useState(2450000);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  
+  // États pour l'utilisateur connecté et le menu
+  const [currentUser, setCurrentUser] = useState(null);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+
+  // Récupérer les informations de l'utilisateur connecté
+  useEffect(() => {
+    const user = authService.getCurrentUser();
+    setCurrentUser(user);
+  }, []);
+
+  // Fonction de déconnexion
+  const handleLogout = async () => {
+    if (window.confirm('Voulez-vous vraiment vous déconnecter ?')) {
+      await authService.logout();
+      // La redirection est gérée par authService.logout()
+    }
+  };
+
+  // Obtenir les initiales de l'utilisateur
+  const getInitials = () => {
+    if (!currentUser) return 'AB';
+    return `${currentUser.prenom?.[0] || ''}${currentUser.nom?.[0] || ''}`.toUpperCase();
+  };
+
+  // Obtenir le nom complet de l'utilisateur
+  const getFullName = () => {
+    if (!currentUser) return 'Ahmed Bakayoko';
+    return `${currentUser.prenom} ${currentUser.nom}`;
+  };
 
   // Gestionnaires d'événements
   const handlePropertyClick = (property) => {
@@ -145,23 +172,8 @@ export default function ProprietaireDashboard() {
       case 'revenue': return <RevenusPaiements formatCurrency={formatCurrency} />;
       case 'contracts': return <ContratsDocuments />;
       case 'providers': return <Prestataire setIsPrestatairesModalOpen={setIsPrestatairesModalOpen} />;
-      // case 'advertising': return <PublierAnnoncePage setIsAnnonceModalOpen={setIsAnnonceModalOpen} />;
-      case 'advertising':
-        return <PublierAnnoncePage
-          setIsAnnonceModalOpen={setIsAnnonceModalOpen}
-          setIsAnnonceDetailModal={setIsAnnonceDetailModal}
-          setSelectedAnnonceDetail={setSelectedAnnonceDetail}
-        />;
-      case 'marketing':
-        return <MarketingIAPage />;
       case 'messages':
         return <MessagesPage />;
-      case 'legal':
-        return <BaseReglementairePage />;
-      case 'public':
-        return <ServicesPublicsPage />;
-      case 'support':
-        return <SupportExpert />;
       case 'advanced':
         return <GestionAvancee />;
       case 'settings':
@@ -209,7 +221,6 @@ export default function ProprietaireDashboard() {
     setIsAnnonceDetailModal(false);
   };
 
-
   // Toggle sidebar function
   const toggleSidebar = () => {
     setIsSidebarCollapsed(!isSidebarCollapsed);
@@ -243,15 +254,10 @@ export default function ProprietaireDashboard() {
     { id: 'evaluation', icon: '📈', label: 'Évaluation IA', premium: true },
     { id: 'providers', icon: '🛠️', label: 'Prestataires' },
     { id: 'messages', icon: '💬', label: 'Messages' },
-    { id: 'advertising', icon: '📢', label: 'Publier Annonce' },
-    { id: 'marketing', icon: '🎯', label: 'Marketing IA', premium: true },
   ];
 
   const adminItems = [
-    { id: 'legal', icon: '⚖️', label: 'Base Réglementaire' },
-    { id: 'public', icon: '🏛️', label: 'Services Publics' },
     { id: 'settings', icon: '⚙️', label: 'Paramètres' },
-    { id: 'support', icon: '❓', label: 'Support Expert' },
   ];
 
   const quickActions = [
@@ -304,8 +310,6 @@ export default function ProprietaireDashboard() {
       setActiveNav('marketing');
     }
   };
-
-
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-400 to-orange-500">
@@ -421,7 +425,7 @@ export default function ProprietaireDashboard() {
                       <span className="font-medium relative z-10 ml-2">{item.label}</span>
                       {item.premium && (
                         <div className="ml-auto bg-gradient-to-r from-purple-400 to-indigo-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md relative z-10">
-                          PRO
+                          
                         </div>
                       )}
                       {item.badge && !item.premium && (
@@ -438,7 +442,7 @@ export default function ProprietaireDashboard() {
                   )}
                   {isSidebarCollapsed && item.premium && (
                     <div className="absolute -top-1 -right-1 bg-gradient-to-r from-purple-400 to-indigo-500 text-white text-[8px] font-bold px-1 py-0.5 rounded-full relative z-10 min-w-[18px] h-4 flex items-center justify-center">
-                      PRO
+                      
                     </div>
                   )}
                 </a>
@@ -528,7 +532,7 @@ export default function ProprietaireDashboard() {
                 </div>
 
                 {/* Quick Stats - Plus compacts */}
-                <div className="flex gap-1 ">
+                <div className="flex gap-1">
                   <div className="flex flex-col items-center p-1.5 bg-white rounded-lg border border-gray-200 min-w-[50px] hover:transform hover:-translate-y-1 hover:shadow-md transition-all duration-300">
                     <div className="text-xs font-bold text-gray-900">8</div>
                     <div className="text-[7px] text-gray-500 font-semibold uppercase tracking-wider">Propriétés</div>
@@ -562,15 +566,103 @@ export default function ProprietaireDashboard() {
                   <div className="text-[10px]">{formatCurrency(revenueValue)}</div>
                 </div>
 
-                {/* User Info - Plus compact */}
-                <div className="flex items-center gap-2 p-2 pr-3 bg-white border border-gray-200 rounded-lg cursor-pointer hover:shadow-md hover:transform hover:-translate-y-1 transition-all duration-300">
-                  <div className="w-7 h-7 bg-gradient-to-br from-red-400 to-orange-500 rounded-lg flex items-center justify-center text-white font-bold text-xs">
-                    AB
+                {/* User Info - Avec menu de déconnexion */}
+                <div className="relative">
+                  <div 
+                    onClick={() => setShowUserMenu(!showUserMenu)}
+                    className="flex items-center gap-2 p-2 pr-3 bg-white border border-gray-200 rounded-lg cursor-pointer hover:shadow-md hover:transform hover:-translate-y-1 transition-all duration-300"
+                  >
+                    <div className="w-7 h-7 bg-gradient-to-br from-red-400 to-orange-500 rounded-lg flex items-center justify-center text-white font-bold text-xs">
+                      {getInitials()}
+                    </div>
+                    <div className="flex flex-col">
+                      <div className="font-bold text-gray-900 text-xs">{getFullName()}</div>
+                      <div className="text-red-500 text-[9px] font-semibold capitalize">
+                        {currentUser?.role || 'Propriétaire'} Premium
+                      </div>
+                    </div>
+                    <svg
+                      className={`w-3 h-3 text-gray-600 transition-transform ${showUserMenu ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
                   </div>
-                  <div className="flex flex-col">
-                    <div className="font-bold text-gray-900 text-xs">Ahmed Bakayoko</div>
-                    <div className="text-red-500 text-[9px] font-semibold">Propriétaire Premium</div>
-                  </div>
+
+                  {/* Menu déroulant */}
+                  {showUserMenu && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setShowUserMenu(false)}
+                      ></div>
+                      <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl py-2 z-20 border border-gray-200">
+                        {/* Info utilisateur */}
+                        <div className="px-4 py-3 border-b border-gray-200">
+                          <p className="text-sm font-medium text-gray-900">
+                            {currentUser?.prenom} {currentUser?.nom}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">{currentUser?.email}</p>
+                        </div>
+
+                        {/* Téléphone */}
+                        {currentUser?.telephone && (
+                          <div className="px-4 py-2 text-sm text-gray-700">
+                            <div className="flex items-center">
+                              <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                              </svg>
+                              {currentUser.telephone}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="border-t border-gray-200"></div>
+
+                        {/* Options du menu */}
+                        <button
+                          onClick={() => {
+                            setShowUserMenu(false);
+                            handleNavClick('settings');
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                        >
+                          <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          Mon profil
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setShowUserMenu(false);
+                            handleNavClick('settings');
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                        >
+                          <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          Paramètres
+                        </button>
+
+                        <div className="border-t border-gray-200"></div>
+
+                        <button
+                          onClick={handleLogout}
+                          className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center"
+                        >
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                          </svg>
+                          Se déconnecter
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -581,9 +673,10 @@ export default function ProprietaireDashboard() {
               {renderContent()}
             </div>
           </div>
-
         </div>
       </div>
+
+      {/* Modals */}
       <PropertyFormModal isOpen={isModalOpen} onClose={closeModal} />
       <TenantFormModal isOpen={isTenantModalOpen} onClose={closeTenantModal} />
       <ContractFormModal isOpen={isContractModalOpen} onClose={closeContractModal} />
