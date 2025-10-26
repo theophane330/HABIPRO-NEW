@@ -156,17 +156,28 @@ function PropertySidePanel({ isOpen, onClose, onSuccess, propertyToEdit = null }
   const handleSubmit = async () => {
     setLoading(true);
     try {
+      const token = localStorage.getItem('token');
       const data = new FormData();
       Object.keys(formData).forEach(key => {
         if (formData[key]) data.append(key, formData[key]);
       });
 
-      const url = propertyToEdit 
+      const url = propertyToEdit
         ? `${API_BASE_URL}/properties/${propertyToEdit.id}/`
         : `${API_BASE_URL}/properties/`;
-      
+
       const method = propertyToEdit ? 'PATCH' : 'POST';
-      const response = await fetch(url, { method, body: data });
+
+      const headers = {};
+      if (token) {
+        headers['Authorization'] = `Token ${token}`;
+      }
+
+      const response = await fetch(url, {
+        method,
+        body: data,
+        headers: headers
+      });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -182,9 +193,15 @@ function PropertySidePanel({ isOpen, onClose, onSuccess, propertyToEdit = null }
           mediaData.append('files', file);
         });
 
+        const mediaHeaders = {};
+        if (token) {
+          mediaHeaders['Authorization'] = `Token ${token}`;
+        }
+
         await fetch(`${API_BASE_URL}/properties/${savedProperty.id}/upload_media/`, {
           method: 'POST',
-          body: mediaData
+          body: mediaData,
+          headers: mediaHeaders
         });
       }
 
@@ -564,7 +581,19 @@ export default function Properties({ formatCurrency = (amount) => new Intl.Numbe
   const fetchProperties = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/properties/`);
+      const token = localStorage.getItem('token');
+
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+
+      if (token) {
+        headers['Authorization'] = `Token ${token}`;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/properties/`, {
+        headers: headers
+      });
       if (!response.ok) throw new Error('Erreur lors du chargement');
       const data = await response.json();
       setProperties(Array.isArray(data) ? data : (data.results || []));
@@ -578,7 +607,19 @@ export default function Properties({ formatCurrency = (amount) => new Intl.Numbe
 
   const fetchStatistics = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/properties/statistiques/`);
+      const token = localStorage.getItem('token');
+
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+
+      if (token) {
+        headers['Authorization'] = `Token ${token}`;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/properties/statistiques/`, {
+        headers: headers
+      });
       if (response.ok) setStatistics(await response.json());
     } catch (err) {
       console.error('Erreur statistiques:', err);
@@ -610,7 +651,16 @@ export default function Properties({ formatCurrency = (amount) => new Intl.Numbe
       case 'delete':
         if (window.confirm(`Supprimer "${property.titre}" ?`)) {
           try {
-            const response = await fetch(`${API_BASE_URL}/properties/${property.id}/`, { method: 'DELETE' });
+            const token = localStorage.getItem('token');
+            const headers = {};
+            if (token) {
+              headers['Authorization'] = `Token ${token}`;
+            }
+
+            const response = await fetch(`${API_BASE_URL}/properties/${property.id}/`, {
+              method: 'DELETE',
+              headers: headers
+            });
             if (!response.ok) throw new Error('Erreur suppression');
             await fetchProperties();
             await fetchStatistics();
@@ -628,7 +678,17 @@ export default function Properties({ formatCurrency = (amount) => new Intl.Numbe
 
   const exportData = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/properties/export/`);
+      const token = localStorage.getItem('token');
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      if (token) {
+        headers['Authorization'] = `Token ${token}`;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/properties/export/`, {
+        headers: headers
+      });
       if (!response.ok) throw new Error('Erreur exportation');
       const data = await response.json();
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });

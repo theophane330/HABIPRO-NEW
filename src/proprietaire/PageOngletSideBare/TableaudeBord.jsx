@@ -1,6 +1,8 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 
+const API_BASE_URL = 'http://localhost:8000/api';
+
 export default function TableaudeBord({
     setIsModalOpen,
     setIsTenantModalOpen,
@@ -22,8 +24,40 @@ export default function TableaudeBord({
 
     const [isVisible, setIsVisible] = useState(false);
 
+    // États pour les statistiques du dashboard
+    const [dashboardStats, setDashboardStats] = useState({
+        total_properties: 0,
+        total_tenants: 0,
+        occupation_rate: 0,
+        monthly_revenue: 0
+    });
+
+    // Charger les statistiques depuis l'API
+    const loadDashboardStats = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+
+            const response = await fetch(`${API_BASE_URL}/dashboard/statistics/`, {
+                headers: {
+                    'Authorization': `Token ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log('📊 Statistiques tableau de bord:', data);
+                setDashboardStats(data);
+            }
+        } catch (error) {
+            console.error('Erreur lors du chargement des statistiques:', error);
+        }
+    };
+
     useEffect(() => {
         setTimeout(() => setIsVisible(true), 100);
+        loadDashboardStats();
     }, []);
 
     return (
@@ -47,7 +81,9 @@ export default function TableaudeBord({
                                 ↗ +12%
                             </div>
                         </div>
-                        <div className="text-lg font-bold text-gray-900 mb-1">2.45M</div>
+                        <div className="text-lg font-bold text-gray-900 mb-1">
+                            {formatCurrency ? formatCurrency(dashboardStats.monthly_revenue) : dashboardStats.monthly_revenue}
+                        </div>
                         <div className="text-xs text-gray-500 font-semibold">Revenus Mensuels</div>
                     </div>
 
@@ -61,7 +97,7 @@ export default function TableaudeBord({
                                 ↗ +1 nouveau
                             </div>
                         </div>
-                        <div className="text-lg font-bold text-gray-900 mb-1">8</div>
+                        <div className="text-lg font-bold text-gray-900 mb-1">{dashboardStats.total_properties}</div>
                         <div className="text-xs text-gray-500 font-semibold">Propriétés Gérées</div>
                     </div>
 
@@ -72,10 +108,10 @@ export default function TableaudeBord({
                                 👥
                             </div>
                             <div className="text-[8px] font-semibold px-1 py-0.5 bg-green-100 text-green-600 rounded-full flex items-center gap-1">
-                                ↗ 95% occupation
+                                ↗ {dashboardStats.occupation_rate}% occupation
                             </div>
                         </div>
-                        <div className="text-lg font-bold text-gray-900 mb-1">12</div>
+                        <div className="text-lg font-bold text-gray-900 mb-1">{dashboardStats.total_tenants}</div>
                         <div className="text-xs text-gray-500 font-semibold">Locataires Actifs</div>
                     </div>
 

@@ -9,6 +9,7 @@ import MaintenanceModal from './ActionsRapides/MaintenanceModal';
 import PaiementsLocataire from "./PageOngletSideBare/PaiementsLocataire";
 import MaintenanceLocataire from "./PageOngletSideBare/MaintenanceLocataire";
 import ContratDocumentsLocataire from "./PageOngletSideBare/ContratDocumentsLocataire";
+import MesLocations from "./PageOngletSideBare/MesLocations";
 // import MessagerieLocataire from "./PageOngletSideBare/MessagerieLocataire";
 // import EvenementsLocataire from "./PageOngletSideBare/EvenementsLocataire";
 // import InfosContratLocataire from "./PageOngletSideBare/InfosContratLocataire";
@@ -26,6 +27,7 @@ export default function LocataireDashboard() {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(3);
+  const [defaultTabMesLocations, setDefaultTabMesLocations] = useState('properties');
 
   // États pour l'utilisateur connecté et le menu
   const [currentUser, setCurrentUser] = useState(null);
@@ -38,9 +40,112 @@ export default function LocataireDashboard() {
 
   // Récupérer les informations de l'utilisateur connecté
   useEffect(() => {
-    const user = authService.getCurrentUser();
-    setCurrentUser(user);
+    const checkAndLoadUser = async () => {
+      const user = authService.getCurrentUser();
+      const token = authService.getToken();
+
+      console.log('[AUTH DEBUG] Token:', token ? 'Existe' : 'Absent');
+      console.log('[AUTH DEBUG] User from localStorage:', user);
+
+      if (token && !user) {
+        // On a un token mais pas d'utilisateur, vérifier avec le backend
+        const result = await authService.checkAuth();
+        console.log('[AUTH DEBUG] CheckAuth result:', result);
+        if (result.authenticated) {
+          setCurrentUser(result.user);
+        } else {
+          // Token invalide, rediriger vers login
+          window.location.href = '/login';
+        }
+      } else if (!token) {
+        // Pas de token, rediriger vers login
+        console.log('[AUTH DEBUG] No token, redirecting to login');
+        window.location.href = '/login';
+      } else {
+        setCurrentUser(user);
+        console.log('[AUTH DEBUG] User role:', user.role);
+      }
+    };
+
+    checkAndLoadUser();
   }, []);
+
+  // État pour les données du contrat actif du locataire
+  const [tenantContractData, setTenantContractData] = useState(null);
+
+  // Charger les données du contrat actif du locataire
+  const loadTenantContract = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch('http://127.0.0.1:8000/api/contracts/', {
+        headers: {
+          'Authorization': `Token ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const contracts = await response.json();
+        console.log('[DEBUG] Contrats récupérés:', contracts);
+
+        // Trouver le contrat actif
+        const activeContract = contracts.find(c => c.status === 'active');
+        console.log('[DEBUG] Contrat actif trouvé:', activeContract);
+
+        if (activeContract) {
+          const contractData = {
+            tenantId: activeContract.tenant,
+            propertyId: activeContract.property,
+            locationId: activeContract.location,
+            rentAmount: parseFloat(activeContract.amount),
+            property: activeContract.property_title || 'Non spécifié',
+            address: activeContract.property_address || 'Non spécifié',
+            contractId: activeContract.id
+          };
+          console.log('[DEBUG] Données du contrat préparées:', contractData);
+          setTenantContractData(contractData);
+        } else {
+          console.log('[DEBUG] Aucun contrat actif trouvé');
+        }
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement du contrat:', error);
+    }
+  };
+
+  // Charger le nombre de messages non lus
+  const loadUnreadCount = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch('http://localhost:8000/api/visit-requests/unread-count/', {
+        headers: {
+          'Authorization': `Token ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setUnreadNotifications(data.unread_count || 0);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des notifications:', error);
+    }
+  };
+
+  // Charger le compteur au démarrage et toutes les 30 secondes
+  useEffect(() => {
+    if (currentUser) {
+      loadUnreadCount();
+      loadTenantContract(); // Charger les données du contrat
+      const interval = setInterval(loadUnreadCount, 30000); // Rafraîchir toutes les 30s
+      return () => clearInterval(interval);
+    }
+  }, [currentUser]);
 
   // Fonction de déconnexion
   const handleLogout = async () => {
@@ -59,7 +164,8 @@ export default function LocataireDashboard() {
   // Obtenir le nom complet de l'utilisateur
   const getFullName = () => {
     if (!currentUser) return 'Konan Patrick';
-    return `${currentUser.prenom} ${currentUser.nom}`;
+    const fullName = `${currentUser.prenom} ${currentUser.nom}`;
+    return fullName.length > 15 ? fullName.substring(0, 15) + '...' : fullName;
   };
 
   const formatCurrency = (amount) => {
@@ -68,13 +174,6 @@ export default function LocataireDashboard() {
       currency: 'XOF',
       minimumFractionDigits: 0
     }).format(amount);
-  };
-
-  // Données du locataire pour le modal de paiement
-  const tenantData = {
-    property: 'Résidence Les Palmiers',
-    address: 'Cocody - Abidjan',
-    rentAmount: 350000
   };
 
   const toggleSidebar = () => {
@@ -91,19 +190,21 @@ export default function LocataireDashboard() {
   const renderContent = () => {
     switch (activeNav) {
       case 'dashboard':
-        return <TableauDeBord 
+        return <TableauDeBord
           setIsPaymentModalOpen={setIsPaymentModalOpen}
           setIsMaintenanceModalOpen={setIsMaintenanceModalOpen}
           setIsMessageModalOpen={setIsMessageModalOpen}
           formatCurrency={formatCurrency}
           quickActions={quickActions}
         />;
+      case 'locations':
+        return <MesLocations formatCurrency={formatCurrency} defaultTab={defaultTabMesLocations} />;
       case 'payments':
-        return <PaiementsLocataire formatCurrency={formatCurrency} />; 
+        return <PaiementsLocataire formatCurrency={formatCurrency} />;
       case 'maintenance':
         return <MaintenanceLocataire />;
       case 'documents':
-        return <ContratDocumentsLocataire />; 
+        return <ContratDocumentsLocataire />;
       case 'messages':
         return null; // <MessagerieLocataire setIsMessageModalOpen={setIsMessageModalOpen} />
       case 'events':
@@ -125,6 +226,7 @@ export default function LocataireDashboard() {
 
   const navItems = [
     { id: 'dashboard', icon: '🏠', label: 'Tableau de bord' },
+    { id: 'locations', icon: '🏘️', label: 'Mes Locations' },
     { id: 'payments', icon: '💰', label: 'Paiements' },
     { id: 'maintenance', icon: '🔧', label: 'Maintenance' },
     { id: 'documents', icon: '📄', label: 'Contrat & Documents' }
@@ -144,7 +246,16 @@ export default function LocataireDashboard() {
       icon: '💳',
       label: 'Payer mon loyer',
       gradient: 'from-green-400 to-teal-400',
-      onClick: () => setIsPaymentModalOpen(true)
+      onClick: () => {
+        console.log('[DEBUG] tenantContractData avant ouverture modal:', tenantContractData);
+        setIsPaymentModalOpen(true);
+      }
+    },
+    {
+      icon: '🏘️',
+      label: 'Mes Locations',
+      gradient: 'from-indigo-400 to-purple-500',
+      onClick: () => setActiveNav('locations')
     },
     {
       icon: '🔧',
@@ -180,6 +291,13 @@ export default function LocataireDashboard() {
 
   const handleNavClick = (itemId) => {
     setActiveNav(itemId);
+    // Réinitialiser l'onglet par défaut sauf si on clique sur la cloche
+    if (itemId === 'locations' && defaultTabMesLocations === 'properties') {
+      // Navigation normale vers locations, ne rien changer
+    } else if (itemId !== 'locations') {
+      // Si on navigue ailleurs, réinitialiser
+      setDefaultTabMesLocations('properties');
+    }
   };
 
   const closePaymentModal = () => {
@@ -352,6 +470,7 @@ export default function LocataireDashboard() {
               <div className="flex-1">
                 <div className="text-sm font-bold mb-1 bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
                   {activeNav === 'dashboard' ? 'Mon Tableau de Bord' :
+                    activeNav === 'locations' ? 'Mes Locations' :
                     activeNav === 'payments' ? 'Paiements & Historique' :
                     activeNav === 'maintenance' ? 'Demandes de Maintenance' :
                     activeNav === 'documents' ? 'Contrat & Documents' :
@@ -407,13 +526,18 @@ export default function LocataireDashboard() {
                 {/* Action Buttons */}
                 <div className="flex items-center gap-2">
                   <div
-                    onClick={() => handleNavClick('events')}
+                    onClick={() => {
+                      setDefaultTabMesLocations('visits');
+                      handleNavClick('locations');
+                    }}
                     className="w-8 h-8 bg-gray-50 border border-gray-200 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-300 hover:bg-blue-500 hover:text-white hover:transform hover:-translate-y-1 hover:shadow-lg text-sm relative"
                   >
                     🔔
-                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-[8px] text-white flex items-center justify-center font-bold">
-                      {unreadNotifications}
-                    </div>
+                    {unreadNotifications > 0 && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-[8px] text-white flex items-center justify-center font-bold">
+                        {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                      </div>
+                    )}
                   </div>
                   <div
                     onClick={() => handleNavClick('settings')}
@@ -544,7 +668,6 @@ export default function LocataireDashboard() {
       <PaymentModal
         isOpen={isPaymentModalOpen}
         onClose={closePaymentModal}
-        tenantData={tenantData}
         formatCurrency={formatCurrency}
       />
       <MaintenanceModal

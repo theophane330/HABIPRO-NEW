@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { X, FileText, User, Home, DollarSign, Shield, Upload } from 'lucide-react';
 
-const ContractFormModal = ({ isOpen, onClose }) => {
+const API_BASE_URL = 'http://127.0.0.1:8000/api';
+
+const ContractFormModal = ({ isOpen, onClose, onContractCreated }) => {
     const [activeTab, setActiveTab] = useState('selection');
     const [formData, setFormData] = useState({
         // Sélection
         selectedTenant: '',
         selectedProperty: '',
+        selectedLocation: '',
 
         // Informations auto-remplies du locataire
         tenantName: '',
@@ -38,83 +41,184 @@ const ContractFormModal = ({ isOpen, onClose }) => {
 
         // Documents
         contractPdf: null,
-        tenantIdDocuments: [],
+        tenantIdDocuments: [],      // gardé mais non utilisé pour l’upload direct
+        propertyDocuments: [],
 
         // Autres informations
         additionalNotes: ''
     });
 
     const [errors, setErrors] = useState({});
+    const [availableTenants, setAvailableTenants] = useState([]);
+    const [availableProperties, setAvailableProperties] = useState([]);
+    const [availableLocations, setAvailableLocations] = useState([]);
+    const [loading, setLoading] = useState(false);
 
-    // Données simulées - à remplacer par vos vraies données
-    const availableTenants = [
-        {
-            id: 1,
-            name: 'Kouassi Jean-Baptiste',
-            phone: '07 89 56 12 34',
-            email: 'jean.kouassi@gmail.com',
-            idNumber: 'CNI123456789'
-        },
-        {
-            id: 2,
-            name: 'Adjoa Marie-Claire',
-            phone: '05 44 78 90 12',
-            email: 'marie.adjoa@yahoo.fr',
-            idNumber: 'CNI987654321'
-        },
-        {
-            id: 3,
-            name: 'Koffi Emmanuel',
-            phone: '01 23 45 67 89',
-            email: 'e.koffi@hotmail.com',
-            idNumber: 'PASS456789123'
-        }
-    ];
+    // Un seul fichier CNI (objet ou null)
+    const [uploadedCNI, setUploadedCNI] = useState(null);
 
-    const availableProperties = [
-        {
-            id: 1,
-            title: 'Villa 4 pièces à Cocody',
-            address: 'Cocody, Riviera Golf, Rue des Palmiers',
-            type: 'Villa',
-            surface: '180',
-            rooms: '4'
-        },
-        {
-            id: 2,
-            title: 'Appartement 2 chambres à Plateau',
-            address: 'Plateau, Zone 4, Avenue Chardy',
-            type: 'Appartement',
-            surface: '85',
-            rooms: '3'
-        },
-        {
-            id: 3,
-            title: 'Studio meublé à Marcory',
-            address: 'Marcory, Zone 4C, Rue du Commerce',
-            type: 'Studio',
-            surface: '35',
-            rooms: '1'
+    // Toujours des tableaux pour éviter .length sur null
+    const [autoLoadedDocs, setAutoLoadedDocs] = useState({
+        tenantDocs: [],
+        propertyDocs: []
+    });
+
+    // Charger les locataires depuis le backend
+    useEffect(() => {
+        if (isOpen) {
+            loadTenants();
+            loadProperties();
+            loadLocations();
         }
-    ];
+    }, [isOpen]);
+
+    const loadTenants = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_BASE_URL}/tenants/`, {
+                headers: {
+                    'Authorization': `Token ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            const data = await response.json();
+            setAvailableTenants(Array.isArray(data) ? data : (data.results || []));
+        } catch (error) {
+            console.error('Erreur lors du chargement des locataires:', error);
+        }
+    };
+
+    const loadProperties = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_BASE_URL}/properties/`, {
+                headers: {
+                    'Authorization': `Token ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            const data = await response.json();
+            setAvailableProperties(Array.isArray(data) ? data : (data.results || []));
+        } catch (error) {
+            console.error('Erreur lors du chargement des propriétés:', error);
+        }
+    };
+
+    const loadLocations = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_BASE_URL}/locations/`, {
+                headers: {
+                    'Authorization': `Token ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            const data = await response.json();
+            setAvailableLocations(Array.isArray(data) ? data : (data.results || []));
+        } catch (error) {
+            console.error('Erreur lors du chargement des locations:', error);
+        }
+    };
 
     const contractTypes = ['Location', 'Vente'];
     const paymentMethods = ['Mobile Money', 'Virement bancaire', 'Espèces', 'Chèque', 'Orange Money', 'MTN Money'];
     const paymentFrequencies = ['Mensuel', 'Trimestriel', 'Semestriel', 'Annuel'];
     const securityDepositOptions = ['1 mois de loyer', '2 mois de loyer', '3 mois de loyer', 'Montant personnalisé'];
 
-    // Auto-remplissage des informations du locataire
+    // Charger les documents du locataire
+    const loadTenantDocuments = async (tenantId) => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_BASE_URL}/tenants/${tenantId}/`, {
+                headers: {
+                    'Authorization': `Token ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            const data = await response.json();
+
+            const docs = [];
+            if (data.id_document) {
+                docs.push({
+                    name: "Document d'identité du locataire",
+                    url: data.id_document,
+                    type: 'tenant_id'
+                });
+            }
+            if (data.signed_contract) {
+                docs.push({
+                    name: 'Contrat signé du locataire',
+                    url: data.signed_contract,
+                    type: 'tenant_contract'
+                });
+            }
+
+            setAutoLoadedDocs(prev => ({ ...prev, tenantDocs: docs || [] }));
+        } catch (error) {
+            console.error('Erreur lors du chargement des documents du locataire:', error);
+        }
+    };
+
+    // Charger les documents de la propriété
+    const loadPropertyDocuments = async (propertyId) => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_BASE_URL}/properties/${propertyId}/`, {
+                headers: {
+                    'Authorization': `Token ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            const data = await response.json();
+
+            const docs = [];
+            // Ajouter les documents disponibles de la propriété
+            if (data.documents && Array.isArray(data.documents)) {
+                data.documents.forEach(doc => {
+                    docs.push({
+                        name: doc.title || 'Document de la propriété',
+                        url: doc.file,
+                        type: 'property_doc'
+                    });
+                });
+            }
+
+            setAutoLoadedDocs(prev => ({ ...prev, propertyDocs: docs || [] }));
+        } catch (error) {
+            console.error('Erreur lors du chargement des documents de la propriété:', error);
+        }
+    };
+
+    // Auto-remplissage des informations du locataire et de sa propriété
     useEffect(() => {
         if (formData.selectedTenant) {
             const tenant = availableTenants.find(t => t.id === parseInt(formData.selectedTenant));
             if (tenant) {
+                // Trouver la location active du locataire
+                const tenantLocation = availableLocations.find(
+                    loc => loc.tenant === tenant.id && loc.status === 'active'
+                );
+
+                // Auto-remplir les informations du locataire
                 setFormData(prev => ({
                     ...prev,
-                    tenantName: tenant.name,
+                    tenantName: tenant.full_name,
                     tenantPhone: tenant.phone,
                     tenantEmail: tenant.email,
-                    tenantIdNumber: tenant.idNumber
+                    tenantIdNumber: tenant.id_number,
+                    // Auto-remplir la propriété liée au locataire
+                    selectedProperty: tenantLocation ? tenantLocation.property.toString() : '',
+                    selectedLocation: tenantLocation ? tenantLocation.id : '',
+                    // Auto-remplir les conditions financières depuis la location
+                    amount: tenantLocation ? tenantLocation.monthly_rent : '',
+                    securityDeposit: tenant.security_deposit || '',
+                    paymentMethod: tenant.payment_method || '',
+                    startDate: tenant.lease_start_date || '',
+                    endDate: tenant.lease_end_date || ''
                 }));
+
+                // Charger les documents du locataire
+                loadTenantDocuments(tenant.id);
             }
         } else {
             setFormData(prev => ({
@@ -122,10 +226,13 @@ const ContractFormModal = ({ isOpen, onClose }) => {
                 tenantName: '',
                 tenantPhone: '',
                 tenantEmail: '',
-                tenantIdNumber: ''
+                tenantIdNumber: '',
+                selectedProperty: '',
+                selectedLocation: ''
             }));
+            setAutoLoadedDocs(prev => ({ ...prev, tenantDocs: [] }));
         }
-    }, [formData.selectedTenant]);
+    }, [formData.selectedTenant, availableTenants, availableLocations]);
 
     // Auto-remplissage des informations de la propriété
     useEffect(() => {
@@ -134,11 +241,14 @@ const ContractFormModal = ({ isOpen, onClose }) => {
             if (property) {
                 setFormData(prev => ({
                     ...prev,
-                    propertyAddress: property.address,
+                    propertyAddress: property.adresse,
                     propertyType: property.type,
-                    propertySurface: property.surface,
-                    propertyRooms: property.rooms
+                    propertySurface: property.superficie,
+                    propertyRooms: property.nombre_pieces
                 }));
+
+                // Charger les documents de la propriété
+                loadPropertyDocuments(property.id);
             }
         } else {
             setFormData(prev => ({
@@ -148,8 +258,9 @@ const ContractFormModal = ({ isOpen, onClose }) => {
                 propertySurface: '',
                 propertyRooms: ''
             }));
+            setAutoLoadedDocs(prev => ({ ...prev, propertyDocs: [] }));
         }
-    }, [formData.selectedProperty]);
+    }, [formData.selectedProperty, availableProperties]);
 
     const handleInputChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -167,19 +278,36 @@ const ContractFormModal = ({ isOpen, onClose }) => {
         }
     };
 
+    // Gère un seul fichier pour 'tenantIdDocuments' et un seul PDF pour 'contractPdf'
     const handleFileChange = (e) => {
         const { name, files } = e.target;
+
         if (name === 'tenantIdDocuments') {
-            setFormData(prev => ({
-                ...prev,
-                tenantIdDocuments: Array.from(files)
-            }));
-        } else {
-            setFormData(prev => ({
-                ...prev,
-                [name]: files[0] || null
-            }));
+            const file = files && files[0] ? files[0] : null;
+            if (file) {
+                setUploadedCNI({
+                    file,
+                    name: file.name,
+                    type: 'uploaded_cni'
+                });
+            } else {
+                setUploadedCNI(null);
+            }
+            return;
         }
+
+        if (name === 'contractPdf') {
+            const file = files && files[0] ? files[0] : null;
+            setFormData(prev => ({
+                ...prev,
+                contractPdf: file || null
+            }));
+            return;
+        }
+    };
+
+    const removeCNI = () => {
+        setUploadedCNI(null);
     };
 
     const validateForm = () => {
@@ -190,35 +318,105 @@ const ContractFormModal = ({ isOpen, onClose }) => {
         if (!formData.selectedProperty) newErrors.selectedProperty = 'La propriété est obligatoire';
         if (!formData.contractType) newErrors.contractType = 'Le type de contrat est obligatoire';
         if (!formData.startDate) newErrors.startDate = 'La date de début est obligatoire';
-        if (!formData.amount.trim()) newErrors.amount = 'Le montant est obligatoire';
+        if (!formData.amount || formData.amount === '' || formData.amount <= 0) newErrors.amount = 'Le montant est obligatoire';
 
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (validateForm()) {
-            console.log('Données du contrat:', formData);
-            alert('Contrat créé avec succès !');
-            onClose();
-            resetForm();
-            // Ici vous pourriez envoyer les données à votre API
+            setLoading(true);
+            try {
+                const token = localStorage.getItem('token');
+
+                // Préparer les données pour l'API
+                const contractData = {
+                    tenant: parseInt(formData.selectedTenant),
+                    property: parseInt(formData.selectedProperty),
+                    location: formData.selectedLocation || null,
+                    contract_type: formData.contractType,
+                    start_date: formData.startDate,
+                    end_date: formData.endDate || null,
+                    contract_purpose: formData.contractPurpose,
+                    amount: parseFloat(formData.amount),
+                    security_deposit: formData.securityDeposit,
+                    payment_method: formData.paymentMethod,
+                    payment_frequency: formData.paymentFrequency,
+                    specific_rules: formData.specificRules,
+                    insurance: formData.insurance,
+                    additional_notes: formData.additionalNotes
+                };
+
+                const response = await fetch(`${API_BASE_URL}/contracts/`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Token ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(contractData)
+                });
+
+                if (response.ok) {
+                    const createdContract = await response.json();
+                    console.log('Contrat créé:', createdContract);
+                    alert('✅ Contrat créé avec succès !\n\nStatut: Actif\nLe contrat est maintenant actif et visible par le locataire.');
+
+                    // Appeler le callback si fourni
+                    if (onContractCreated) {
+                        onContractCreated(createdContract);
+                    }
+
+                    onClose();
+                    resetForm();
+                } else {
+                    const errorData = await response.json();
+                    console.error('Erreur lors de la création:', errorData);
+                    alert('❌ Erreur lors de la création du contrat. Vérifiez les données.');
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+                alert('❌ Erreur de connexion au serveur.');
+            } finally {
+                setLoading(false);
+            }
         } else {
-            alert('Veuillez corriger les erreurs dans le formulaire.');
+            alert('⚠️ Veuillez corriger les erreurs dans le formulaire.');
         }
     };
 
     const resetForm = () => {
         setFormData({
-            selectedTenant: '', selectedProperty: '', tenantName: '', tenantPhone: '',
-            tenantEmail: '', tenantIdNumber: '', propertyAddress: '', propertyType: '',
-            propertySurface: '', propertyRooms: '', contractType: '', startDate: '',
-            endDate: '', contractPurpose: '', amount: '', securityDeposit: '',
-            paymentMethod: '', paymentFrequency: '', specificRules: '', insurance: '',
-            contractPdf: null, tenantIdDocuments: [], additionalNotes: ''
+            selectedTenant: '',
+            selectedProperty: '',
+            selectedLocation: '',
+            tenantName: '',
+            tenantPhone: '',
+            tenantEmail: '',
+            tenantIdNumber: '',
+            propertyAddress: '',
+            propertyType: '',
+            propertySurface: '',
+            propertyRooms: '',
+            contractType: '',
+            startDate: '',
+            endDate: '',
+            contractPurpose: '',
+            amount: '',
+            securityDeposit: '',
+            paymentMethod: '',
+            paymentFrequency: '',
+            specificRules: '',
+            insurance: '',
+            contractPdf: null,
+            tenantIdDocuments: [],   // laissé tel quel dans le shape initial
+            propertyDocuments: [],
+            additionalNotes: ''
         });
         setErrors({});
         setActiveTab('selection');
+        setUploadedCNI(null);
+        setAutoLoadedDocs({ tenantDocs: [], propertyDocs: [] });
     };
 
     const handleClose = () => {
@@ -240,8 +438,8 @@ const ContractFormModal = ({ isOpen, onClose }) => {
         <div
             className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4"
             onClick={handleClose}
-        >            
-        <div className="bg-white rounded-lg shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        >
+            <div className="bg-white rounded-lg shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
                 {/* En-tête du modal */}
                 <div className="bg-purple-600 text-white p-4 flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -303,7 +501,7 @@ const ContractFormModal = ({ isOpen, onClose }) => {
                                             <option value="">Sélectionner un locataire</option>
                                             {availableTenants.map(tenant => (
                                                 <option key={tenant.id} value={tenant.id}>
-                                                    {tenant.name} - {tenant.phone}
+                                                    {tenant.full_name} - {tenant.phone}
                                                 </option>
                                             ))}
                                         </select>
@@ -346,14 +544,20 @@ const ContractFormModal = ({ isOpen, onClose }) => {
                                             onChange={handleInputChange}
                                             className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 ${errors.selectedProperty ? 'border-red-500' : 'border-gray-300'
                                                 }`}
+                                            disabled={formData.selectedTenant && formData.selectedLocation}
                                         >
                                             <option value="">Sélectionner une propriété</option>
                                             {availableProperties.map(property => (
                                                 <option key={property.id} value={property.id}>
-                                                    {property.title}
+                                                    {property.titre}
                                                 </option>
                                             ))}
                                         </select>
+                                        {formData.selectedTenant && formData.selectedLocation && (
+                                            <p className="text-xs text-blue-600 mt-1">
+                                                ℹ️ Propriété automatiquement sélectionnée selon le locataire
+                                            </p>
+                                        )}
                                         {errors.selectedProperty && <p className="text-red-500 text-sm mt-1">{errors.selectedProperty}</p>}
                                     </div>
 
@@ -570,8 +774,91 @@ const ContractFormModal = ({ isOpen, onClose }) => {
 
                         {/* Onglet Documents */}
                         {activeTab === 'documents' && (
-                            <div className="space-y-4">
+                            <div className="space-y-6">
                                 <h3 className="text-lg font-semibold text-gray-800 mb-4">📂 Documents et notes</h3>
+
+                                {/* Documents automatiquement chargés du locataire */}
+                                {autoLoadedDocs.tenantDocs && autoLoadedDocs.tenantDocs.length > 0 && (
+                                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                        <h4 className="font-semibold text-blue-800 mb-3 flex items-center gap-2">
+                                            <span>👤</span> Documents du locataire
+                                        </h4>
+                                        <div className="space-y-2">
+                                            {autoLoadedDocs.tenantDocs.map((doc, index) => (
+                                                <div key={index} className="flex items-center justify-between bg-white p-2 rounded border">
+                                                    <span className="text-sm text-gray-700">{doc.name}</span>
+                                                    <a
+                                                        href={doc.url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-blue-600 hover:text-blue-800 text-sm"
+                                                    >
+                                                        Voir
+                                                    </a>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Documents automatiquement chargés de la propriété */}
+                                {autoLoadedDocs.propertyDocs && autoLoadedDocs.propertyDocs.length > 0 && (
+                                    <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                                        <h4 className="font-semibold text-green-800 mb-3 flex items-center gap-2">
+                                            <span>🏠</span> Documents de la propriété
+                                        </h4>
+                                        <div className="space-y-2">
+                                            {autoLoadedDocs.propertyDocs.map((doc, index) => (
+                                                <div key={index} className="flex items-center justify-between bg-white p-2 rounded border">
+                                                    <span className="text-sm text-gray-700">{doc.name}</span>
+                                                    <a
+                                                        href={doc.url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-green-600 hover:text-green-800 text-sm"
+                                                    >
+                                                        Voir
+                                                    </a>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Upload CNI (un seul fichier) */}
+                                <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        🪪 Pièce d'identité (CNI/Passeport)
+                                    </label>
+                                    <input
+                                        type="file"
+                                        name="tenantIdDocuments"
+                                        onChange={handleFileChange}
+                                        accept=".pdf,.jpg,.jpeg,.png"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                                    />
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        CNI ou Passeport (un seul fichier)
+                                    </p>
+
+                                    {/* Affichage unique de la CNI uploadée */}
+                                    {uploadedCNI ? (
+                                        <div className="mt-3 space-y-2">
+                                            <div className="flex items-center justify-between bg-white p-2 rounded border">
+                                                <span className="text-sm text-gray-700">{uploadedCNI.name}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={removeCNI}
+                                                    className="text-red-600 hover:text-red-800 text-sm"
+                                                >
+                                                    Supprimer
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-gray-500 mt-1">Aucun fichier CNI sélectionné</p>
+                                    )}
+                                </div>
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -586,23 +873,6 @@ const ContractFormModal = ({ isOpen, onClose }) => {
                                     />
                                     <p className="text-sm text-gray-500 mt-1">
                                         Upload ou génération automatique (format PDF uniquement)
-                                    </p>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        🧾 Pièces d'identité du locataire (facultatif)
-                                    </label>
-                                    <input
-                                        type="file"
-                                        name="tenantIdDocuments"
-                                        onChange={handleFileChange}
-                                        multiple
-                                        accept=".pdf,.jpg,.jpeg,.png"
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                    />
-                                    <p className="text-sm text-gray-500 mt-1">
-                                        CNI, Passeport (plusieurs fichiers acceptés)
                                     </p>
                                 </div>
 
@@ -636,8 +906,9 @@ const ContractFormModal = ({ isOpen, onClose }) => {
                             type="button"
                             onClick={handleSubmit}
                             className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md transition-colors"
+                            disabled={loading}
                         >
-                            ✅ Enregistrer le contrat
+                            {loading ? 'Enregistrement...' : '✅ Enregistrer le contrat'}
                         </button>
                     </div>
                 </div>

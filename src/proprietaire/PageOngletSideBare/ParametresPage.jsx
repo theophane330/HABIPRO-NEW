@@ -1,16 +1,40 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Settings, User, Building2, Globe, Bell, CreditCard, Shield, Users, Database, RefreshCw, Save, X, Lock, Mail, Phone, Upload, Camera, LogOut, Smartphone, Clock, DollarSign, Calendar, Download } from 'lucide-react';
 
 export default function ParametresPage() {
   const [activeSection, setActiveSection] = useState('profile');
   const [hasChanges, setHasChanges] = useState(false);
 
+  // Charger les informations de l'utilisateur connecté
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    // Récupérer l'utilisateur connecté depuis localStorage
+    const userStr = localStorage.getItem('currentUser');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        setCurrentUser(user);
+        // Initialiser profileData avec les vraies données de l'utilisateur
+        setProfileData({
+          fullName: `${user.prenom || ''} ${user.nom || ''}`.trim(),
+          email: user.email || '',
+          phone: user.telephone || '',
+          whatsapp: user.telephone || '',
+          profileImage: null
+        });
+      } catch (error) {
+        console.error('Erreur lors du chargement des informations utilisateur:', error);
+      }
+    }
+  }, []);
+
   // États pour le profil utilisateur
   const [profileData, setProfileData] = useState({
-    fullName: "Kouassi Jean-Marc",
-    email: "jean.kouassi@immo.ci",
-    phone: "+225 07 89 45 12 34",
-    whatsapp: "+225 07 89 45 12 34",
+    fullName: "",
+    email: "",
+    phone: "",
+    whatsapp: "",
     profileImage: null
   });
 

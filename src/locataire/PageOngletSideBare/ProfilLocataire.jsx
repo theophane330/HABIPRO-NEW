@@ -1,15 +1,42 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Eye, EyeOff, Lock, Bell, Mail, Phone, MapPin, FileText, LogOut } from 'lucide-react';
 
 export default function ProfilLocataire() {
+  // Charger les informations de l'utilisateur connecté
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    // Récupérer l'utilisateur connecté depuis localStorage
+    const userStr = localStorage.getItem('currentUser');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        setCurrentUser(user);
+        // Initialiser formData avec les vraies données de l'utilisateur
+        setFormData({
+          name: `${user.prenom || ''} ${user.nom || ''}`.trim(),
+          idNumber: user.id_number || '',
+          birthDate: user.birth_date || '',
+          phone: user.telephone || '',
+          email: user.email || '',
+          address: user.adresse || '',
+          city: user.ville || '',
+          photo: null
+        });
+      } catch (error) {
+        console.error('Erreur lors du chargement des informations utilisateur:', error);
+      }
+    }
+  }, []);
+
   const [formData, setFormData] = useState({
-    name: 'Konan Patrick',
-    idNumber: 'CI-1234567890',
-    birthDate: '1990-05-15',
-    phone: '+225 07 89 45 12 34',
-    email: 'konan.patrick@email.com',
-    address: 'Résidence Les Palmiers, Apt 302',
-    city: 'Abidjan - Cocody',
+    name: '',
+    idNumber: '',
+    birthDate: '',
+    phone: '',
+    email: '',
+    address: '',
+    city: '',
     photo: null
   });
 
@@ -66,27 +93,48 @@ export default function ProfilLocataire() {
             <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm sticky top-6">
               <div className="text-center mb-6">
                 <div className="w-24 h-24 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-full flex items-center justify-center text-white text-4xl mx-auto mb-4 shadow-lg">
-                  KP
+                  {currentUser ? `${currentUser.prenom?.[0] || ''}${currentUser.nom?.[0] || ''}`.toUpperCase() : 'L'}
                 </div>
-                <h3 className="text-lg font-bold text-gray-900">Konan Patrick</h3>
-                <p className="text-sm text-blue-600 font-semibold">Locataire Premium</p>
+                <h3 className="text-lg font-bold text-gray-900">
+                  {currentUser ? `${currentUser.prenom || ''} ${currentUser.nom || ''}`.trim() : 'Chargement...'}
+                </h3>
+                <p className="text-sm text-blue-600 font-semibold">Locataire {currentUser?.is_premium ? 'Premium' : ''}</p>
               </div>
 
               <div className="space-y-3 text-sm border-t border-gray-200 pt-4">
-                <div>
-                  <p className="text-gray-600">📍 Studio Cocody</p>
-                </div>
+                {currentUser?.adresse && (
+                  <div>
+                    <p className="text-gray-600">📍 {currentUser.adresse}</p>
+                  </div>
+                )}
                 <div>
                   <p className="text-gray-600">📅 Membre depuis</p>
-                  <p className="font-semibold text-gray-900">Janvier 2024</p>
+                  <p className="font-semibold text-gray-900">
+                    {currentUser?.date_joined
+                      ? new Date(currentUser.date_joined).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+                      : 'N/A'}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-gray-600">✅ Statut</p>
-                  <p className="font-semibold text-green-600">Vérifié</p>
+                  <p className="text-gray-600">📧 Email</p>
+                  <p className="font-semibold text-gray-900 text-xs">{currentUser?.email || 'N/A'}</p>
                 </div>
+                {currentUser?.telephone && (
+                  <div>
+                    <p className="text-gray-600">📱 Téléphone</p>
+                    <p className="font-semibold text-gray-900">{currentUser.telephone}</p>
+                  </div>
+                )}
               </div>
 
-              <button className="w-full mt-6 px-4 py-2 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600 transition-colors flex items-center justify-center gap-2">
+              <button
+                onClick={() => {
+                  if (window.confirm('Voulez-vous vraiment vous déconnecter ?')) {
+                    localStorage.clear();
+                    window.location.href = '/login';
+                  }
+                }}
+                className="w-full mt-6 px-4 py-2 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600 transition-colors flex items-center justify-center gap-2">
                 <LogOut className="w-4 h-4" /> Se déconnecter
               </button>
             </div>

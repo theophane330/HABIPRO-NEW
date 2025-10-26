@@ -2,9 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Search, Edit, Phone, FileText, Clock, Calendar, AlertCircle, CheckCircle, MapPin, CreditCard, X, Plus, Download, Bell, User, Building, TrendingUp } from 'lucide-react';
 import { LayoutGrid, List } from 'lucide-react';
 
+const API_BASE_URL = 'http://localhost:8000/api';
+
 export default function Tenants({
     setIsTenantModalOpen,
-    formatCurrency = (amount) => new Intl.NumberFormat('fr-FR').format(amount) + ' FCFA'
+    formatCurrency = (amount) => new Intl.NumberFormat('fr-FR').format(amount) + ' FCFA',
+    onRefreshNeeded
 }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
@@ -12,6 +15,7 @@ export default function Tenants({
     const [selectedTenant, setSelectedTenant] = useState(null);
     const [showPopup, setShowPopup] = useState(false);
     const [showWelcomePopup, setShowWelcomePopup] = useState(false);
+    const [loading, setLoading] = useState(true);
 
     // Images d'avatars africains réalistes
     const africanAvatars = [
@@ -50,156 +54,90 @@ export default function Tenants({
         return colors[colorIndex];
     };
 
-    // Données d'exemple avec plus de réalisme
-    const [tenants, setTenants] = useState([
-        {
-            id: 1,
-            firstName: "Jean",
-            lastName: "Kouassi",
-            fullName: "Jean Kouassi",
-            title: "Ingénieur Logiciel",
-            location: "Cocody, Abidjan",
-            phone: "+225 07 89 45 12 34",
-            email: "jean.kouassi@email.ci",
-            property: "Villa 5p Cocody",
-            propertyId: 1,
-            rent: 500000,
-            contractStatus: "actif",
-            paymentStatus: "a_jour",
-            nextPayment: "2025-09-05",
-            contractStart: "2024-01-01",
-            contractEnd: "2025-12-31",
-            lastPayment: "2025-08-01",
-            avatar: "JK",
-            paymentsCount: 8,
-            totalPaid: 4000000,
-            reliability: 95
-        },
-        {
-            id: 2,
-            firstName: "Mariam",
-            lastName: "Diallo",
-            fullName: "Mariam Diallo",
-            title: "Directrice Pédagogique",
-            location: "Yopougon, Abidjan",
-            phone: "+225 01 25 36 48 59",
-            email: "mariam.diallo@education.ci",
-            property: "Studio Premium Yopougon",
-            propertyId: 2,
-            rent: 150000,
-            contractStatus: "actif",
-            paymentStatus: "impaye",
-            nextPayment: "2025-08-10",
-            contractStart: "2024-03-01",
-            contractEnd: "2026-02-28",
-            lastPayment: "2025-07-01",
-            avatar: "MD",
-            paymentsCount: 5,
-            totalPaid: 750000,
-            reliability: 78
-        },
-        {
-            id: 3,
-            firstName: "Paul",
-            lastName: "Adjoua",
-            fullName: "Paul Adjoua",
-            title: "Expert-Comptable",
-            location: "Plateau, Abidjan",
-            phone: "+225 05 36 78 45 62",
-            email: "paul.adjoua@cabinet.ci",
-            property: "Bureaux Plateau",
-            propertyId: 3,
-            rent: 400000,
-            contractStatus: "en_attente",
-            paymentStatus: "en_attente",
-            nextPayment: "2025-09-01",
-            contractStart: "2025-09-01",
-            contractEnd: "2026-08-31",
-            lastPayment: null,
-            avatar: "PA",
-            paymentsCount: 0,
-            totalPaid: 0,
-            reliability: 0
-        },
-        {
-            id: 4,
-            firstName: "Awa",
-            lastName: "Traoré",
-            fullName: "Awa Traoré",
-            title: "Directrice Marketing",
-            location: "Riviera Golf, Abidjan",
-            phone: "+225 02 47 58 96 31",
-            email: "awa.traore@agency.ci",
-            property: "Villa Executive Riviera",
-            propertyId: 4,
-            rent: 850000,
-            contractStatus: "actif",
-            paymentStatus: "retard",
-            nextPayment: "2025-08-20",
-            contractStart: "2023-06-01",
-            contractEnd: "2025-05-31",
-            lastPayment: "2025-07-20",
-            avatar: "AT",
-            paymentsCount: 16,
-            totalPaid: 13600000,
-            reliability: 88
-        },
-        {
-            id: 5,
-            firstName: "Paul",
-            lastName: "Adjoua",
-            fullName: "Paul Adjoua",
-            title: "Expert-Comptable",
-            location: "Plateau, Abidjan",
-            phone: "+225 05 36 78 45 62",
-            email: "paul.adjoua@cabinet.ci",
-            property: "Bureaux Plateau",
-            propertyId: 3,
-            rent: 400000,
-            contractStatus: "en_attente",
-            paymentStatus: "en_attente",
-            nextPayment: "2025-09-01",
-            contractStart: "2025-09-01",
-            contractEnd: "2026-08-31",
-            lastPayment: null,
-            avatar: "PA",
-            paymentsCount: 0,
-            totalPaid: 0,
-            reliability: 0
-        }
-        ,
-        {
-            id: 6,
-            firstName: "Paul",
-            lastName: "Adjoua",
-            fullName: "Paul Adjoua",
-            title: "Expert-Comptable",
-            location: "Plateau, Abidjan",
-            phone: "+225 05 36 78 45 62",
-            email: "paul.adjoua@cabinet.ci",
-            property: "Bureaux Plateau",
-            propertyId: 3,
-            rent: 400000,
-            contractStatus: "en_attente",
-            paymentStatus: "en_attente",
-            nextPayment: "2025-09-01",
-            contractStart: "2025-09-01",
-            contractEnd: "2026-08-31",
-            lastPayment: null,
-            avatar: "PA",
-            paymentsCount: 0,
-            totalPaid: 0,
-            reliability: 0
-        },
-    ]);
+    // Charger les locataires depuis l'API
+    const [tenants, setTenants] = useState([]);
+    const [properties, setProperties] = useState([]);
 
-    // Liste des propriétés
-    const properties = [
-        { id: 1, name: "Villa 5p Cocody" },
-        { id: 2, name: "Studio Premium Yopougon" },
-        { id: 3, name: "Bureaux Plateau" },
-        { id: 4, name: "Villa Executive Riviera" }
-    ];
+    // Charger les locataires au montage
+    useEffect(() => {
+        loadTenants();
+    }, []);
+
+    // Exposer la fonction de rafraîchissement au parent
+    useEffect(() => {
+        if (onRefreshNeeded) {
+            onRefreshNeeded(loadTenants);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [onRefreshNeeded]);
+
+    const loadTenants = async () => {
+        try {
+            setLoading(true);
+            const token = localStorage.getItem('token');
+
+            console.log('🔄 Chargement des locataires...');
+            console.log('🔑 Token:', token ? 'présent' : 'absent');
+
+            const response = await fetch(`${API_BASE_URL}/locations/`, {
+                headers: {
+                    'Authorization': `Token ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            console.log('📡 Réponse API:', response.status, response.statusText);
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log('✅ Données reçues:', data);
+                console.log('📊 Type de données:', typeof data);
+                console.log('📊 Est un tableau?', Array.isArray(data));
+                console.log('📊 Clés de l\'objet:', Object.keys(data));
+
+                // L'API Django REST retourne souvent { results: [...] } pour les listes paginées
+                const locations = Array.isArray(data) ? data : (data.results || []);
+                console.log('📊 Nombre de locations:', locations.length);
+
+                // Transformer les données de l'API (locations) pour correspondre au format attendu
+                const transformedData = locations.map(location => ({
+                    id: location.id,
+                    fullName: location.tenant_name,
+                    firstName: location.tenant_name.split(' ')[0],
+                    lastName: location.tenant_name.split(' ').slice(1).join(' '),
+                    phone: location.tenant_phone,
+                    email: location.tenant_email,
+                    property: location.property_title || 'N/A',
+                    propertyId: location.property,
+                    rent: location.monthly_rent,
+                    contractStatus: location.status,
+                    paymentStatus: 'a_jour', // À améliorer avec vraies données
+                    nextPayment: null,
+                    contractStart: location.lease_start_date,
+                    contractEnd: location.lease_end_date,
+                    lastPayment: null,
+                    avatar: location.tenant_name.split(' ').map(n => n[0]).join(''),
+                    paymentsCount: 0,
+                    totalPaid: 0,
+                    reliability: 0,
+                    tenantId: location.tenant,
+                    title: location.property_title || 'N/A',
+                    location: 'Dakar' // À améliorer avec vraies données
+                }));
+
+                console.log('🔄 Données transformées:', transformedData);
+                setTenants(transformedData);
+            } else {
+                const errorText = await response.text();
+                console.error('❌ Erreur HTTP:', response.status, errorText);
+            }
+        } catch (error) {
+            console.error('❌ Erreur lors du chargement:', error);
+        } finally {
+            setLoading(false);
+            console.log('✅ Chargement terminé');
+        }
+    };
 
     // Filtrer les locataires
     const filteredTenants = tenants.filter(tenant => {
@@ -255,11 +193,105 @@ export default function Tenants({
         }
     };
 
-    const handleTenantAction = (action, tenant) => {
+    // Charger les détails complets d'un locataire avec ses paiements
+    const loadTenantDetails = async (locationId) => {
+        try {
+            const token = localStorage.getItem('token');
+
+            // Charger les détails de la location
+            const locationResponse = await fetch(`${API_BASE_URL}/locations/${locationId}/`, {
+                headers: {
+                    'Authorization': `Token ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!locationResponse.ok) {
+                console.error('Erreur lors du chargement des détails de la location');
+                return null;
+            }
+
+            const locationData = await locationResponse.json();
+            console.log('📋 Détails de la location:', locationData);
+
+            // Charger les paiements du locataire
+            const paymentsResponse = await fetch(`${API_BASE_URL}/payments/?tenant=${locationData.tenant}`, {
+                headers: {
+                    'Authorization': `Token ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            let paymentsData = [];
+            if (paymentsResponse.ok) {
+                const payments = await paymentsResponse.json();
+                paymentsData = Array.isArray(payments) ? payments : (payments.results || []);
+                console.log('💰 Paiements du locataire:', paymentsData);
+            }
+
+            // Calculer les statistiques de paiement
+            const paidPayments = paymentsData.filter(p => p.status === 'paid' || p.status === 'À jour');
+            const totalPaid = paidPayments.reduce((sum, p) => sum + p.amount, 0);
+            const reliability = paymentsData.length > 0
+                ? Math.round((paidPayments.length / paymentsData.length) * 100)
+                : 100;
+
+            // Trouver le dernier et le prochain paiement
+            const sortedPayments = [...paymentsData].sort((a, b) =>
+                new Date(b.payment_date) - new Date(a.payment_date)
+            );
+            const lastPayment = sortedPayments.find(p => p.status === 'paid' || p.status === 'À jour');
+            const nextPayment = sortedPayments.find(p => p.status !== 'paid' && p.status !== 'À jour');
+
+            // Construire l'objet détaillé
+            return {
+                id: locationData.id,
+                fullName: locationData.tenant_name,
+                firstName: locationData.tenant_name.split(' ')[0],
+                lastName: locationData.tenant_name.split(' ').slice(1).join(' '),
+                phone: locationData.tenant_phone,
+                email: locationData.tenant_email,
+                property: locationData.property_title || 'N/A',
+                propertyId: locationData.property,
+                propertyAddress: locationData.property_address || 'N/A',
+                rent: locationData.monthly_rent,
+                securityDeposit: locationData.security_deposit,
+                paymentMethod: locationData.payment_method,
+                contractStatus: locationData.status,
+                paymentStatus: nextPayment ? (new Date(nextPayment.next_payment_date) < new Date() ? 'retard' : 'a_jour') : 'a_jour',
+                nextPayment: nextPayment?.next_payment_date || null,
+                contractStart: locationData.lease_start_date,
+                contractEnd: locationData.lease_end_date,
+                lastPayment: lastPayment?.payment_date || null,
+                avatar: locationData.tenant_name.split(' ').map(n => n[0]).join(''),
+                paymentsCount: paidPayments.length,
+                totalPaid: totalPaid,
+                reliability: reliability,
+                tenantId: locationData.tenant,
+                title: locationData.property_title || 'N/A',
+                location: 'Dakar', // À améliorer avec vraies données
+                signedContract: locationData.signed_contract,
+                additionalNotes: locationData.additional_notes || ''
+            };
+        } catch (error) {
+            console.error('Erreur lors du chargement des détails:', error);
+            return null;
+        }
+    };
+
+    const handleTenantAction = async (action, tenant) => {
         switch (action) {
             case 'view':
-                setSelectedTenant(tenant);
-                setShowPopup(true);
+                // Charger les détails complets avant d'afficher le popup
+                const detailedTenant = await loadTenantDetails(tenant.id);
+                if (detailedTenant) {
+                    setSelectedTenant(detailedTenant);
+                    setShowPopup(true);
+                } else {
+                    // Si le chargement échoue, utiliser les données de base
+                    setSelectedTenant(tenant);
+                    setShowPopup(true);
+                }
                 break;
             case 'edit':
                 console.log(`Modifier: ${tenant.firstName} ${tenant.lastName}`);
@@ -305,26 +337,10 @@ export default function Tenants({
     };
 
     const [isVisible, setIsVisible] = useState(false);
-
-    // useEffect(() => {
-    //     setTimeout(() => setIsVisible(true), 100);
-    //     // Afficher le popup de bienvenue après 2 secondes
-    //     setTimeout(() => setShowWelcomePopup(true), 2000);
-
-
-    // }, []);
-
-    useEffect(() => {
-        setTimeout(() => setIsVisible(true), 100);
-        // Afficher le popup de bienvenue après 2 secondes
-        setTimeout(() => setShowWelcomePopup(true), 2000);
-    }, []);
-
-
     const [showOverdueToast, setShowOverdueToast] = useState(false);
     const [toastProgress, setToastProgress] = useState(100);
 
-
+    // Initialisation de la visibilité et du popup de bienvenue
     useEffect(() => {
         setTimeout(() => setIsVisible(true), 100);
         // Afficher le popup de bienvenue après 2 secondes
@@ -458,78 +474,90 @@ export default function Tenants({
 
             {/* Contenu principal */}
             <div className="px-4 py-4">
-                {/* Barre de recherche et filtres modernisée */}
-                <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-3 mb-6">
-                    <div className="flex flex-wrap gap-2 items-center">
-                        <div className="relative flex-1 min-w-64">
-                            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" size={16} />
-                            <input
-                                type="text"
-                                placeholder="Rechercher par nom, email ou téléphone..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white text-sm"
-                            />
-                        </div>
-
-                        <div className="flex gap-2">
-                            {/* Boutons de vue */}
-                            <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
-                                <button
-                                    onClick={() => setViewMode('grid')}
-                                    className={`px-3 py-2 rounded-lg transition-all ${viewMode === 'grid'
-                                        ? 'bg-white text-slate-900 shadow-sm'
-                                        : 'text-slate-600 hover:text-slate-900'
-                                        }`}
-                                >
-                                    <LayoutGrid size={18} />
-                                </button>
-                                <button
-                                    onClick={() => setViewMode('table')}
-                                    className={`px-3 py-2 rounded-lg transition-all ${viewMode === 'table'
-                                        ? 'bg-white text-slate-900 shadow-sm'
-                                        : 'text-slate-600 hover:text-slate-900'
-                                        }`}
-                                >
-                                    <List size={18} />
-                                </button>
-                            </div>
-
-                            <select
-                                value={statusFilter}
-                                onChange={(e) => setStatusFilter(e.target.value)}
-                                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-slate-700 text-sm"
-                            >
-                                <option value="all">Tous les statuts</option>
-                                <option value="a_jour">À jour</option>
-                                <option value="impaye">Impayé</option>
-                                <option value="retard">En retard</option>
-                                <option value="en_attente">En attente</option>
-                            </select>
-
-                            <select
-                                value={propertyFilter}
-                                onChange={(e) => setPropertyFilter(e.target.value)}
-                                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-slate-700 text-sm"
-                            >
-                                <option value="all">Toutes les propriétés</option>
-                                {properties.map(property => (
-                                    <option key={property.id} value={property.id.toString()}>
-                                        {property.name}
-                                    </option>
-                                ))}
-                            </select>
-
-                            <button className="px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl hover:bg-slate-200 transition-colors">
-                                <Download size={18} className="text-slate-600" />
-                            </button>
+                {/* Indicateur de chargement */}
+                {loading && (
+                    <div className="flex items-center justify-center py-20">
+                        <div className="text-center">
+                            <div className="w-16 h-16 border-4 border-slate-200 border-t-slate-900 rounded-full animate-spin mx-auto mb-4"></div>
+                            <p className="text-slate-600 font-medium">Chargement des locataires...</p>
                         </div>
                     </div>
-                </div>
+                )}
 
-                {/* Grille de cartes modernisée */}
-                {/* Affichage conditionnel selon le mode */}
-                {viewMode === 'grid' ? (
+                {/* Barre de recherche et filtres modernisée */}
+                {!loading && (
+                    <>
+                        <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-3 mb-6">
+                            <div className="flex flex-wrap gap-2 items-center">
+                                <div className="relative flex-1 min-w-64">
+                                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" size={16} />
+                                    <input
+                                        type="text"
+                                        placeholder="Rechercher par nom, email ou téléphone..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white text-sm"
+                                    />
+                                </div>
+
+                                <div className="flex gap-2">
+                                    {/* Boutons de vue */}
+                                    <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+                                        <button
+                                            onClick={() => setViewMode('grid')}
+                                            className={`px-3 py-2 rounded-lg transition-all ${viewMode === 'grid'
+                                                ? 'bg-white text-slate-900 shadow-sm'
+                                                : 'text-slate-600 hover:text-slate-900'
+                                                }`}
+                                        >
+                                            <LayoutGrid size={18} />
+                                        </button>
+                                        <button
+                                            onClick={() => setViewMode('table')}
+                                            className={`px-3 py-2 rounded-lg transition-all ${viewMode === 'table'
+                                                ? 'bg-white text-slate-900 shadow-sm'
+                                                : 'text-slate-600 hover:text-slate-900'
+                                                }`}
+                                        >
+                                            <List size={18} />
+                                        </button>
+                                    </div>
+
+                                    <select
+                                        value={statusFilter}
+                                        onChange={(e) => setStatusFilter(e.target.value)}
+                                        className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-slate-700 text-sm"
+                                    >
+                                        <option value="all">Tous les statuts</option>
+                                        <option value="a_jour">À jour</option>
+                                        <option value="impaye">Impayé</option>
+                                        <option value="retard">En retard</option>
+                                        <option value="en_attente">En attente</option>
+                                    </select>
+
+                                    <select
+                                        value={propertyFilter}
+                                        onChange={(e) => setPropertyFilter(e.target.value)}
+                                        className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-slate-700 text-sm"
+                                    >
+                                        <option value="all">Toutes les propriétés</option>
+                                        {properties.map(property => (
+                                            <option key={property.id} value={property.id.toString()}>
+                                                {property.name}
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    <button className="px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl hover:bg-slate-200 transition-colors">
+                                        <Download size={18} className="text-slate-600" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Grille de cartes modernisée */}
+                        {/* Affichage conditionnel selon le mode */}
+                        {viewMode === 'grid' ? (
                     /* Grille de cartes modernisée */
                     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-4 gap-6">
                         {filteredTenants.map((tenant, index) => {
@@ -757,12 +785,15 @@ export default function Tenants({
                         </button>
                     </div>
                 )}
+                    </>
+                )}
             </div>
 
             {/* Popup de détails modernisé */}
             {showPopup && selectedTenant && (
                 <div
-                    className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-6 "
+                    className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-6 "
+                    style={{ zIndex: 9999 }}
                     onClick={closePopup}
                 >
                     <div
@@ -837,6 +868,12 @@ export default function Tenants({
                                     <div className="text-[10px] text-slate-600 uppercase tracking-wide">Loyer/mois</div>
                                 </div>
                                 <div className="text-center p-3 bg-slate-50 rounded-xl">
+                                    <div className="text-xl font-bold text-amber-600 mb-0.5">
+                                        {selectedTenant.securityDeposit ? Math.round(selectedTenant.securityDeposit / 1000) : 0}K
+                                    </div>
+                                    <div className="text-[10px] text-slate-600 uppercase tracking-wide">Caution</div>
+                                </div>
+                                <div className="text-center p-3 bg-slate-50 rounded-xl">
                                     <div className="text-xl font-bold text-slate-900 mb-0.5">{selectedTenant.paymentsCount}</div>
                                     <div className="text-[10px] text-slate-600 uppercase tracking-wide">Paiements</div>
                                 </div>
@@ -849,12 +886,6 @@ export default function Tenants({
                                         {Math.floor((new Date() - new Date(selectedTenant.contractStart)) / (1000 * 60 * 60 * 24 * 30))}
                                     </div>
                                     <div className="text-[10px] text-slate-600 uppercase tracking-wide">Mois</div>
-                                </div>
-                                <div className="text-center p-3 bg-slate-50 rounded-xl">
-                                    <div className="text-lg font-bold text-purple-600 mb-0.5">
-                                        {formatCurrency(selectedTenant.totalPaid).replace(' FCFA', '').substring(0, 3)}K
-                                    </div>
-                                    <div className="text-[10px] text-slate-600 uppercase tracking-wide">Total payé</div>
                                 </div>
                                 <div className="text-center p-3 bg-slate-50 rounded-xl">
                                     <div className="text-xl font-bold text-blue-600 mb-0.5">

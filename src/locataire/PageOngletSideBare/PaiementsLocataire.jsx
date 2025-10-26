@@ -1,93 +1,193 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Download, Eye, MoreVertical } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Download } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import PaymentModal from "../ActionsRapides/PaymentModal";
+import axios from 'axios';
 
+const API_BASE_URL = 'http://127.0.0.1:8000/api';
 
 export default function PaiementsLocataire() {
   const [isVisible, setIsVisible] = useState(false);
-  const [selectedPeriod, setSelectedPeriod] = useState('mois');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [paymentSuccess, setPaymentSuccess] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState('Novembre 2025');
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('');
-  const [autoPaymentEnabled, setAutoPaymentEnabled] = useState(false);
+  const [paymentData, setPaymentData] = useState(null);
+  const [paymentsList, setPaymentsList] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    setTimeout(() => setIsVisible(true), 100);
-  }, []);
-
+  // Format devise
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'XOF',
-      minimumFractionDigits: 0
-    }).format(amount);
-  };
-
-  // Données de paiement
-  const tenantData = {
-    property: 'Résidence Les Palmiers',
-    address: 'Cocody - Abidjan',
-    rentAmount: 250000,
-    nextPaymentDate: '05/11/2025',
-    paymentStatus: 'À jour',
-    totalDue: 0,
-    daysUntilDue: 5
-  };
-
-  const paymentHistory = [
-    { month: 'Octobre 2025', amount: 250000, date: '04/10/2025', method: 'Orange Money', status: 'paid' },
-    { month: 'Septembre 2025', amount: 250000, date: '03/09/2025', method: 'Carte bancaire', status: 'paid' },
-    { month: 'Août 2025', amount: 250000, date: '01/08/2025', method: 'Mobile Money', status: 'paid' },
-    { month: 'Juillet 2025', amount: 250000, date: '02/07/2025', method: 'Virement', status: 'paid' },
-    { month: 'Juin 2025', amount: 250000, date: '03/06/2025', method: 'Orange Money', status: 'paid' },
-    { month: 'Mai 2025', amount: 250000, date: '05/05/2025', method: 'Carte bancaire', status: 'paid' }
-  ];
-
-  const chartData = [
-    { month: 'Jan', amount: 250000 },
-    { month: 'Fév', amount: 250000 },
-    { month: 'Mar', amount: 250000 },
-    { month: 'Avr', amount: 250000 },
-    { month: 'Mai', amount: 250000 },
-    { month: 'Jun', amount: 250000 },
-    { month: 'Jul', amount: 250000 },
-    { month: 'Aoû', amount: 250000 },
-    { month: 'Sep', amount: 250000 },
-    { month: 'Oct', amount: 250000 },
-    { month: 'Nov', amount: 0 },
-    { month: 'Déc', amount: 0 }
-  ];
-
-  const totalPaid = paymentHistory.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
-  const totalPayments = paymentHistory.length;
-  const collectionRate = ((totalPayments / 12) * 100).toFixed(0);
-
-  const handlePaymentSubmit = () => {
-    if (selectedPaymentMethod) {
-      setPaymentSuccess(true);
-      setTimeout(() => {
-        setIsPaymentModalOpen(false);
-        setPaymentSuccess(false);
-        setSelectedPaymentMethod('');
-      }, 2000);
+    try {
+      return new Intl.NumberFormat('fr-FR', {
+        style: 'currency',
+        currency: 'XOF',
+        minimumFractionDigits: 0
+      }).format(amount || 0);
+    } catch {
+      return `${amount || 0} FCFA`;
     }
   };
 
-  const getStatusColor = (status) => {
-    return status === 'paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200';
+  useEffect(() => {
+    setTimeout(() => setIsVisible(true), 100);
+    loadPaymentStatus();
+    loadPaymentsList();
+  }, []);
+
+const loadPaymentStatus = async () => {
+  try {
+    setLoading(true);
+    const token = localStorage.getItem('token');
+    const resp = await axios.get(`${API_BASE_URL}/payments/payment-status/`, {
+      headers: { Authorization: `Token ${token}` }
+    });
+    setPaymentData(resp.data || null);
+    
+    // 🔥 LOGS DE DÉBOGAGE
+    console.log('📊 API Response complète:', resp.data);
+    console.log('📅 payment_history:', resp.data?.payment_history);
+    
+  } catch (e) {
+    console.error('Erreur lors du chargement des paiements:', e);
+  } finally {
+    setLoading(false);
+  }
+};
+
+  const loadPaymentsList = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const resp = await axios.get(`${API_BASE_URL}/payments/`, {
+        headers: { Authorization: `Token ${token}` }
+      });
+      const rows = Array.isArray(resp.data?.results) ? resp.data.results
+                  : (Array.isArray(resp.data) ? resp.data : []);
+      setPaymentsList(rows);
+      // console.log('payments list', rows);
+    } catch (e) {
+      console.error('Erreur liste paiements:', e);
+    }
   };
 
-  const getStatusText = (status) => {
-    return status === 'paid' ? 'Payé' : 'Non payé';
-  };
+  // Données agrégées pour cartes/alertes
+  const paymentHistory = useMemo(() => {
+    const list = paymentData?.payment_history || [];
+    return list.map((p, idx) => ({
+      id: p.id || idx,
+      month: p.month,                 // "Novembre 2025"
+      amount: Number(p.amount || 0),
+      date: p.date || null,           // "04/10/2025" ou null
+      method: p.method || '-',        // "Orange Money" etc.
+      status: p.status === 'paid' ? 'paid' : 'unpaid',
+      property: p.property || '',
+      transaction_ref: p.transaction_ref || null
+    }));
+  }, [paymentData]);
 
-  const filteredPayments = paymentHistory.filter(payment => {
-    if (selectedStatus !== 'all' && payment.status !== selectedStatus) return false;
-    return true;
+  // Graphe robuste 12 mois
+  const monthLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+
+const chartData = useMemo(() => {
+  const hist = Array.isArray(paymentHistory) ? paymentHistory : [];
+  
+  console.log('🔍 paymentHistory dans chartData:', hist);
+  
+  if (hist.length === 0) {
+    console.log('⚠️ Aucune donnée dans paymentHistory');
+    return monthLabels.map(m => ({ month: m, amount: 0 }));
+  }
+  
+  // Mapping robuste des mois français complets → abréviations
+  const monthMapping = {
+    'Janvier': 'Jan',
+    'Février': 'Fév',
+    'Mars': 'Mar',
+    'Avril': 'Avr',
+    'Mai': 'Mai',
+    'Juin': 'Jun',
+    'Juillet': 'Jul',
+    'Août': 'Aoû',
+    'Septembre': 'Sep',
+    'Octobre': 'Oct',
+    'Novembre': 'Nov',
+    'Décembre': 'Déc'
+  };
+  
+  const byMonth = {};
+  
+  hist.forEach(p => {
+    const monthStr = p.month || '';
+    console.log(`📌 Traitement de: "${monthStr}"`);
+    
+    // Extraire le nom du mois (ex: "Novembre 2025" → "Novembre")
+    const monthName = monthStr.split(' ')[0];
+    
+    // Convertir en abréviation
+    const label = monthMapping[monthName] || monthStr.slice(0, 3);
+    
+    console.log(`   → Mois extrait: "${monthName}" → Label final: "${label}"`);
+    
+    byMonth[label] = (byMonth[label] || 0) + (p.amount || 0);
   });
+  
+  console.log('💰 Données agrégées par mois:', byMonth);
+  
+  const result = monthLabels.map(m => ({ 
+    month: m, 
+    amount: byMonth[m] || 0 
+  }));
+  
+  console.log('📈 chartData final envoyé au graphique:', result);
+  
+  return result;
+}, [paymentHistory]);
+  const totalPaid = useMemo(() => Number(paymentData?.total_paid || 0), [paymentData]);
+  const totalDue = useMemo(() => Number(paymentData?.total_due || 0), [paymentData]);
+  const collectionRate = useMemo(() => {
+    const paid = Number(paymentData?.paid_count || 0);
+    const total = Number((paymentData?.paid_count || 0) + (paymentData?.unpaid_count || 0));
+    if (!total) return '0%';
+    return `${Math.round((paid / total) * 100)}%`;
+  }, [paymentData]);
+
+  const tenantSummary = useMemo(() => {
+    const c = paymentData?.contract_info || {};
+    return {
+      property: c.property || '—',
+      address: c.address || '—',
+      rentAmount: Number(c.rent_amount || 0),
+      nextPaymentDate: paymentData?.next_payment_date || '—',
+      paymentStatus: paymentData?.global_status || '—',
+      totalDue: totalDue,
+      daysUntilDue: paymentData?.days_until_due ?? '—'
+    };
+  }, [paymentData, totalDue]);
+
+  // Liste réelle pour le tableau "Paiements récents"
+  const filteredPayments = useMemo(() => {
+    const rows = (paymentsList || []).map(p => ({
+      id: p.id,
+      month: p.payment_month, // ex: "Novembre 2025" (CharField)
+      amount: Number(p.amount || 0),
+      date: p.payment_date ? new Date(p.payment_date).toLocaleDateString('fr-FR') : '—',
+      method: p.payment_method || '—',
+      status: p.status === 'completed' ? 'paid' : 'unpaid',
+    }));
+    if (selectedStatus === 'all') return rows;
+    return rows.filter(r => (selectedStatus === 'paid' ? r.status === 'paid' : r.status === 'unpaid'));
+  }, [paymentsList, selectedStatus]);
+
+  const handleDownloadReceipt = (paymentId) => {
+    if (!paymentId) return;
+    window.open(`${API_BASE_URL}/payments/${paymentId}/receipt/`, '_blank', 'noopener,noreferrer');
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6">
+        <div className="max-w-7xl mx-auto text-sm text-gray-600">Chargement des paiements…</div>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen bg-gray-50 p-6 transition-all duration-700 ease-out ${isVisible ? 'opacity-100' : 'opacity-0'}`}>
@@ -107,62 +207,71 @@ export default function PaiementsLocataire() {
           </button>
         </div>
 
-        {/* Résumé financier - Cartes */}
+        {/* Résumé financier */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
           <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
             <div className="text-xs text-gray-500 font-semibold mb-1">Logement</div>
-            <div className="text-sm font-bold text-gray-900 mb-0.5">{tenantData.property}</div>
-            <div className="text-xs text-gray-600">{tenantData.address}</div>
+            <div className="text-sm font-bold text-gray-900 mb-0.5">{tenantSummary.property}</div>
+            <div className="text-xs text-gray-600">{tenantSummary.address}</div>
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
             <div className="text-xs text-gray-500 font-semibold mb-1">Loyer mensuel</div>
-            <div className="text-2xl font-bold text-blue-600">{formatCurrency(tenantData.rentAmount)}</div>
+            <div className="text-2xl font-bold text-blue-600">{formatCurrency(tenantSummary.rentAmount)}</div>
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
             <div className="text-xs text-gray-500 font-semibold mb-1">Prochain paiement</div>
-            <div className="text-lg font-bold text-gray-900">{tenantData.nextPaymentDate}</div>
-            <div className="text-xs text-amber-600 mt-1">⏰ Dans {tenantData.daysUntilDue} jours</div>
+            <div className="text-lg font-bold text-gray-900">{tenantSummary.nextPaymentDate}</div>
+            <div className="text-xs text-amber-600 mt-1">⏰ Dans {tenantSummary.daysUntilDue} jours</div>
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
             <div className="text-xs text-gray-500 font-semibold mb-1">Statut</div>
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <div className="text-lg font-bold text-green-600">À jour</div>
+              <div className={`w-2 h-2 rounded-full ${paymentData?.status_color === 'green' ? 'bg-green-500' : paymentData?.status_color === 'orange' ? 'bg-orange-500' : 'bg-red-500'} animate-pulse`}></div>
+              <div className={`text-lg font-bold ${paymentData?.status_color === 'green' ? 'text-green-600' : paymentData?.status_color === 'orange' ? 'text-orange-600' : 'text-red-600'}`}>
+                {tenantSummary.paymentStatus}
+              </div>
             </div>
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
             <div className="text-xs text-gray-500 font-semibold mb-1">Solde dû</div>
-            <div className="text-2xl font-bold text-green-600">{formatCurrency(tenantData.totalDue)}</div>
-            <div className="text-xs text-green-600 mt-1">📈 Zéro impayé</div>
+            <div className="text-2xl font-bold text-green-600">{formatCurrency(tenantSummary.totalDue)}</div>
+            <div className="text-xs text-green-600 mt-1">📈 Taux de régularité: {collectionRate}</div>
           </div>
         </div>
 
         {/* Alertes */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded-lg">
-            <div className="flex items-start gap-3">
-              <div className="text-xl">🟢</div>
-              <div>
-                <div className="font-bold text-green-700">Merci ! Votre dernier paiement a bien été reçu.</div>
-                <div className="text-sm text-green-600">Octobre 2025 - 250 000 FCFA - Confirmé le 04/10/2025</div>
+        {paymentHistory.some(p => p.status === 'paid') && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded-lg">
+              <div className="flex items-start gap-3">
+                <div className="text-xl">🟢</div>
+                <div>
+                  <div className="font-bold text-green-700">Merci ! Un paiement a bien été reçu récemment.</div>
+                  <div className="text-sm text-green-600">
+                    {(() => {
+                      const last = paymentHistory.find(p => p.status === 'paid');
+                      return last ? `${last.month} - ${formatCurrency(last.amount)} - Confirmé ${last.date || ''}` : '';
+                    })()}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-lg">
-            <div className="flex items-start gap-3">
-              <div className="text-xl">🔔</div>
-              <div>
-                <div className="font-bold text-blue-700">Votre prochain paiement est dans 5 jours.</div>
-                <div className="text-sm text-blue-600">05 Novembre 2025 - 250 000 FCFA</div>
+            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-lg">
+              <div className="flex items-start gap-3">
+                <div className="text-xl">🔔</div>
+                <div>
+                  <div className="font-bold text-blue-700">Votre prochain paiement approche.</div>
+                  <div className="text-sm text-blue-600">{tenantSummary.nextPaymentDate} - {formatCurrency(tenantSummary.rentAmount)}</div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Section principale */}
@@ -176,11 +285,16 @@ export default function PaiementsLocataire() {
                   <button className="px-3 py-1 bg-blue-600 text-white rounded-md text-xs font-medium">
                     Mensuel
                   </button>
-                  <button className="px-3 py-1 bg-gray-100 text-gray-700 rounded-md text-xs font-medium">
+                  <button className="px-3 py-1 bg-gray-100 text-gray-700 rounded-md text-xs font-medium" disabled>
                     Annuel
                   </button>
                 </div>
               </div>
+
+              {chartData.every(d => d.amount === 0) && (
+                <div className="text-xs text-gray-500 mb-2">Aucune donnée de paiement à afficher.</div>
+              )}
+
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -201,7 +315,10 @@ export default function PaiementsLocataire() {
                     <p className="text-xs text-gray-500 mt-0.5">{filteredPayments.length} paiement(s)</p>
                   </div>
                   <div className="flex gap-2">
-                    <button className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors flex items-center gap-1.5">
+                    <button
+                      className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors flex items-center gap-1.5"
+                      onClick={() => window.print()}
+                    >
                       <Download className="w-3.5 h-3.5" />
                       Télécharger tous
                     </button>
@@ -223,7 +340,7 @@ export default function PaiementsLocataire() {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
                     {filteredPayments.map((payment) => (
-                      <tr key={payment.month} className="hover:bg-gray-50 transition-colors">
+                      <tr key={`${payment.month}-${payment.id}`} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4">
                           <div className="text-xs font-medium text-gray-900">{payment.month}</div>
                         </td>
@@ -231,18 +348,25 @@ export default function PaiementsLocataire() {
                           <div className="text-xs font-semibold text-gray-900">{formatCurrency(payment.amount)}</div>
                         </td>
                         <td className="px-6 py-4">
-                          <div className="text-xs text-gray-600">{payment.date}</div>
+                          <div className="text-xs text-gray-600">{payment.date || '—'}</div>
                         </td>
                         <td className="px-6 py-4">
                           <div className="text-xs text-gray-600">{payment.method}</div>
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`inline-flex px-2.5 py-1 text-xs font-medium rounded-md ${getStatusColor(payment.status)}`}>
-                            ✅ {getStatusText(payment.status)}
+                          <span className={`inline-flex px-2.5 py-1 text-xs font-medium rounded-md ${payment.status === 'paid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                            {payment.status === 'paid' ? '✅ Payé' : '❌ Non payé'}
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          <button className="text-blue-500 font-semibold hover:text-blue-700 text-xs">📥 Télécharger</button>
+                          <button
+                            className={`text-blue-500 font-semibold hover:text-blue-700 text-xs ${payment.status !== 'paid' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            onClick={() => payment.status === 'paid' && handleDownloadReceipt(payment.id)}
+                            disabled={payment.status !== 'paid'}
+                            title={payment.status !== 'paid' ? 'Reçu indisponible' : 'Télécharger la quittance'}
+                          >
+                            📥 Télécharger
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -254,7 +378,6 @@ export default function PaiementsLocataire() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-
             {/* Actions rapides */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <h3 className="text-base font-semibold text-gray-900 mb-4">Actions rapides</h3>
@@ -276,7 +399,7 @@ export default function PaiementsLocataire() {
                 </button>
                 <button className="w-full text-sm flex items-center gap-3 p-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 01-2 2z" />
                   </svg>
                   Contacter support
                 </button>
@@ -318,10 +441,10 @@ export default function PaiementsLocataire() {
                 <div>
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm text-gray-600">Taux de régularité</span>
-                    <span className="text-sm font-semibold text-emerald-600">100%</span>
+                    <span className="text-sm font-semibold text-emerald-600">{collectionRate}</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bg-emerald-500 h-2 rounded-full" style={{ width: '100%' }}></div>
+                    <div className="bg-emerald-500 h-2 rounded-full" style={{ width: collectionRate }}></div>
                   </div>
                 </div>
                 <div className="pt-4 border-t border-gray-100 space-y-3">
@@ -331,7 +454,13 @@ export default function PaiementsLocataire() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-600">Méthode préférée</span>
-                    <span className="text-sm font-semibold text-gray-900">Orange Money</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {(() => {
+                        const paid = paymentHistory.filter(p => p.status === 'paid');
+                        if (paid.length === 0) return '—';
+                        return paid[0].method || '—';
+                      })()}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -344,7 +473,7 @@ export default function PaiementsLocataire() {
                 <div className="bg-white rounded-lg p-3 border border-purple-200">
                   <div className="text-sm font-semibold text-gray-900 mb-1">💡 Conseil</div>
                   <div className="text-xs text-gray-600">
-                    Votre historique montre une régularité de 100%. Bravo pour votre ponctualité !
+                    {totalDue === 0 ? 'Votre historique montre une régularité excellente. Bravo pour votre ponctualité !' : 'Il reste des paiements en attente. Pensez à régulariser pour éviter des pénalités.'}
                   </div>
                 </div>
                 <button className="w-full p-3 bg-purple-500 text-white rounded-lg font-semibold hover:bg-purple-600 transition-colors text-sm">
@@ -360,8 +489,20 @@ export default function PaiementsLocataire() {
       <PaymentModal
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
-        tenantData={tenantData}
+        tenantData={{
+          property: tenantSummary.property,
+          address: tenantSummary.address,
+          rentAmount: tenantSummary.rentAmount,
+          nextPaymentDate: tenantSummary.nextPaymentDate,
+          paymentStatus: tenantSummary.paymentStatus,
+          totalDue: tenantSummary.totalDue,
+          daysUntilDue: tenantSummary.daysUntilDue
+        }}
         formatCurrency={formatCurrency}
+        onPaymentCreated={() => {
+          loadPaymentStatus();
+          loadPaymentsList();
+        }}
       />
     </div>
   );

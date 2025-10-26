@@ -28,16 +28,117 @@ export default function ProprietaireDashboard() {
   const [revenueValue, setRevenueValue] = useState(2450000);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  
+
   // États pour l'utilisateur connecté et le menu
   const [currentUser, setCurrentUser] = useState(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // États pour les statistiques du dashboard
+  const [dashboardStats, setDashboardStats] = useState({
+    total_properties: 8,
+    total_tenants: 12,
+    occupation_rate: 95,
+    monthly_revenue: 2450000
+  });
 
   // Récupérer les informations de l'utilisateur connecté
   useEffect(() => {
-    const user = authService.getCurrentUser();
-    setCurrentUser(user);
+    const checkAndLoadUser = async () => {
+      const user = authService.getCurrentUser();
+      const token = authService.getToken();
+
+      console.log('[AUTH DEBUG PROPRIETAIRE] Token:', token ? 'Existe' : 'Absent');
+      console.log('[AUTH DEBUG PROPRIETAIRE] User from localStorage:', user);
+
+      if (token && !user) {
+        // On a un token mais pas d'utilisateur, vérifier avec le backend
+        const result = await authService.checkAuth();
+        console.log('[AUTH DEBUG PROPRIETAIRE] CheckAuth result:', result);
+        if (result.authenticated) {
+          setCurrentUser(result.user);
+        } else {
+          // Token invalide, rediriger vers login
+          window.location.href = '/login';
+        }
+      } else if (!token) {
+        // Pas de token, rediriger vers login
+        console.log('[AUTH DEBUG PROPRIETAIRE] No token, redirecting to login');
+        window.location.href = '/login';
+      } else {
+        setCurrentUser(user);
+        console.log('[AUTH DEBUG PROPRIETAIRE] User role:', user.role);
+
+        // Vérifier que l'utilisateur est bien un propriétaire
+        if (user.role !== 'proprietaire') {
+          console.warn('[AUTH DEBUG PROPRIETAIRE] User is not proprietaire, role:', user.role);
+          alert('Accès refusé : Vous devez être un propriétaire pour accéder à cette page');
+          window.location.href = '/login';
+        }
+      }
+    };
+
+    checkAndLoadUser();
   }, []);
+
+  // Charger le nombre de messages non lus
+  const loadUnreadCount = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch('http://localhost:8000/api/visit-requests/unread-count/', {
+        headers: {
+          'Authorization': `Token ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setUnreadCount(data.unread_count || 0);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des notifications:', error);
+    }
+  };
+
+  // Charger les statistiques du dashboard
+  const loadDashboardStats = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch('http://localhost:8000/api/dashboard/statistics/', {
+        headers: {
+          'Authorization': `Token ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('📊 Statistiques du dashboard:', data);
+        setDashboardStats(data);
+        setRevenueValue(data.monthly_revenue);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des statistiques:', error);
+    }
+  };
+
+  // Charger le compteur et les statistiques au démarrage et toutes les 30 secondes
+  useEffect(() => {
+    if (currentUser) {
+      loadUnreadCount();
+      loadDashboardStats();
+      const interval = setInterval(() => {
+        loadUnreadCount();
+        loadDashboardStats();
+      }, 30000); // Rafraîchir toutes les 30s
+      return () => clearInterval(interval);
+    }
+  }, [currentUser]);
 
   // Fonction de déconnexion
   const handleLogout = async () => {
@@ -56,7 +157,8 @@ export default function ProprietaireDashboard() {
   // Obtenir le nom complet de l'utilisateur
   const getFullName = () => {
     if (!currentUser) return 'Ahmed Bakayoko';
-    return `${currentUser.prenom} ${currentUser.nom}`;
+    const fullName = `${currentUser.prenom} ${currentUser.nom}`;
+    return fullName.length > 15 ? fullName.substring(0, 15) + '...' : fullName;
   };
 
   // Gestionnaires d'événements
@@ -167,10 +269,13 @@ export default function ProprietaireDashboard() {
           handleNotificationClick={handleNotificationClick}
         />;
       case 'properties': return <Properties setIsModalOpen={setIsModalOpen} />;
-      case 'tenants': return <Tenants setIsTenantModalOpen={setIsTenantModalOpen} />;
+      case 'tenants': return <Tenants
+        setIsTenantModalOpen={setIsTenantModalOpen}
+        onRefreshNeeded={(callback) => setRefreshTenantsCallback(() => callback)}
+      />;
       case 'evaluation': return <EvaluationIA />;
       case 'revenue': return <RevenusPaiements formatCurrency={formatCurrency} />;
-      case 'contracts': return <ContratsDocuments />;
+      case 'contracts': return <ContratsDocuments setIsContractModalOpen={setIsContractModalOpen} />;
       case 'providers': return <Prestataire setIsPrestatairesModalOpen={setIsPrestatairesModalOpen} />;
       case 'messages':
         return <MessagesPage />;
@@ -192,6 +297,9 @@ export default function ProprietaireDashboard() {
   const [isPrestatairesModalOpen, setIsPrestatairesModalOpen] = useState(false);
   const [isAnnonceDetailModal, setIsAnnonceDetailModal] = useState(false);
   const [selectedAnnonceDetail, setSelectedAnnonceDetail] = useState(null);
+
+  // Référence pour rafraîchir la liste des locataires
+  const [refreshTenantsCallback, setRefreshTenantsCallback] = useState(null);
 
   const closeModal = () => {
     setIsModalOpen(false);
@@ -534,26 +642,31 @@ export default function ProprietaireDashboard() {
                 {/* Quick Stats - Plus compacts */}
                 <div className="flex gap-1">
                   <div className="flex flex-col items-center p-1.5 bg-white rounded-lg border border-gray-200 min-w-[50px] hover:transform hover:-translate-y-1 hover:shadow-md transition-all duration-300">
-                    <div className="text-xs font-bold text-gray-900">8</div>
+                    <div className="text-xs font-bold text-gray-900">{dashboardStats.total_properties}</div>
                     <div className="text-[7px] text-gray-500 font-semibold uppercase tracking-wider">Propriétés</div>
                   </div>
                   <div className="flex flex-col items-center p-1.5 bg-white rounded-lg border border-gray-200 min-w-[60px] hover:transform hover:-translate-y-1 hover:shadow-md transition-all duration-300">
-                    <div className="text-xs font-bold text-gray-900">12</div>
+                    <div className="text-xs font-bold text-gray-900">{dashboardStats.total_tenants}</div>
                     <div className="text-[7px] text-gray-500 font-semibold uppercase tracking-wider">Locataires</div>
                   </div>
                   <div className="flex flex-col items-center p-1.5 bg-white rounded-lg border border-gray-200 min-w-[60px] hover:transform hover:-translate-y-1 hover:shadow-md transition-all duration-300">
-                    <div className="text-xs font-bold text-gray-900">95%</div>
+                    <div className="text-xs font-bold text-gray-900">{dashboardStats.occupation_rate}%</div>
                     <div className="text-[7px] text-gray-500 font-semibold uppercase tracking-wider">Occupation</div>
                   </div>
                 </div>
 
                 {/* Action Buttons - Plus petits */}
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-gray-50 border border-gray-200 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-300 hover:bg-red-500 hover:text-white hover:transform hover:-translate-y-1 hover:shadow-lg text-sm relative">
+                  <div
+                    onClick={() => handleNavClick('messages')}
+                    className="w-8 h-8 bg-gray-50 border border-gray-200 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-300 hover:bg-red-500 hover:text-white hover:transform hover:-translate-y-1 hover:shadow-lg text-sm relative"
+                  >
                     🔔
-                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-[8px] text-white flex items-center justify-center font-bold">
-                      7
-                    </div>
+                    {unreadCount > 0 && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-[8px] text-white flex items-center justify-center font-bold">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </div>
+                    )}
                   </div>
                   <div className="w-8 h-8 bg-gray-50 border border-gray-200 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-300 hover:bg-red-500 hover:text-white hover:transform hover:-translate-y-1 hover:shadow-lg text-sm">
                     ⚙️
@@ -678,7 +791,16 @@ export default function ProprietaireDashboard() {
 
       {/* Modals */}
       <PropertyFormModal isOpen={isModalOpen} onClose={closeModal} />
-      <TenantFormModal isOpen={isTenantModalOpen} onClose={closeTenantModal} />
+      <TenantFormModal
+        isOpen={isTenantModalOpen}
+        onClose={closeTenantModal}
+        onSuccess={() => {
+          // Rafraîchir la liste des locataires après l'ajout
+          if (refreshTenantsCallback) {
+            refreshTenantsCallback();
+          }
+        }}
+      />
       <ContractFormModal isOpen={isContractModalOpen} onClose={closeContractModal} />
       <NouvelleAnnonceModal isOpen={isAnnonceModalOpen} onClose={closeAnnonceModal} />
       <EvaluationIAModal isOpen={isÉvaluationIAModalOpen} onClose={closeÉvaluationIAModal} />

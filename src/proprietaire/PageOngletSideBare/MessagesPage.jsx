@@ -1,489 +1,806 @@
 import React, { useState } from 'react';
-import { Plus, Search, Trash2, Send, Paperclip, Download, X, Filter, Users, MessageCircle, Check, CheckCheck, Clock, Sparkles, Mail, Phone, Home } from 'lucide-react';
+import { Eye, Check, X, RotateCcw, Calendar, Trash2, MapPin, User, Building, CheckCircle2, XCircle, Search } from 'lucide-react';
 
-const MessagerieIntelligente = () => {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [filterType, setFilterType] = useState('all');
-    const [filterStatus, setFilterStatus] = useState('all');
-    const [showFilters, setShowFilters] = useState(false);
-    const [selectedConversation, setSelectedConversation] = useState(null);
-    const [messageText, setMessageText] = useState('');
-    const [showAiAssistant, setShowAiAssistant] = useState(false);
+const API_BASE_URL = 'http://localhost:8000/api';
 
-    const [conversations, setConversations] = useState([
-        {
-            id: 1,
-            contact: 'Jean Kouadio',
-            type: 'Locataire',
-            subject: 'Paiement du loyer',
-            lastMessage: 'Bonjour, le paiement est fait',
-            date: '30/08/2025',
-            time: '14:30',
-            status: 'read',
-            unreadCount: 0,
-            avatar: 'JK',
-            messages: [
-                { id: 1, sender: 'Jean Kouadio', text: 'Bonjour, le paiement du mois d\'août est effectué.', time: '14:25', type: 'received', status: 'read' },
-                { id: 2, sender: 'Vous', text: 'Merci, nous avons bien reçu le paiement ✅', time: '14:30', type: 'sent', status: 'read' }
-            ]
-        },
-        {
-            id: 2,
-            contact: 'Mariam Diallo',
-            type: 'Locataire',
-            subject: 'Fuite salle de bain',
-            lastMessage: 'Problème urgent à résoudre',
-            date: '28/08/2025',
-            time: '09:15',
-            status: 'unread',
-            unreadCount: 3,
-            avatar: 'MD',
-            messages: [
-                { id: 1, sender: 'Mariam Diallo', text: 'Bonjour, j\'ai une fuite d\'eau dans la salle de bain depuis ce matin.', time: '09:10', type: 'received', status: 'read' },
-                { id: 2, sender: 'Mariam Diallo', text: 'C\'est assez urgent, l\'eau coule beaucoup.', time: '09:12', type: 'received', status: 'read' },
-                { id: 3, sender: 'Mariam Diallo', text: 'Problème urgent à résoudre', time: '09:15', type: 'received', status: 'unread' }
-            ]
-        },
-        {
-            id: 3,
-            contact: 'ABC Electricité',
-            type: 'Prestataire',
-            subject: 'Intervention Cocody',
-            lastMessage: 'Travaux terminés',
-            date: '25/08/2025',
-            time: '16:45',
-            status: 'read',
-            unreadCount: 0,
-            avatar: 'AE',
-            messages: [
-                { id: 1, sender: 'ABC Electricité', text: 'Les travaux d\'électricité sont terminés à la Villa Cocody.', time: '16:40', type: 'received', status: 'read' },
-                { id: 2, sender: 'Vous', text: 'Parfait, merci pour votre intervention rapide.', time: '16:42', type: 'sent', status: 'read' },
-                { id: 3, sender: 'ABC Electricité', text: 'Travaux terminés', time: '16:45', type: 'received', status: 'read' }
-            ]
-        },
-        {
-            id: 4,
-            contact: 'Habipro Support',
-            type: 'Assistance',
-            subject: 'Compte propriétaire',
-            lastMessage: 'Votre demande a été prise en charge',
-            date: '20/08/2025',
-            time: '11:20',
-            status: 'read',
-            unreadCount: 0,
-            avatar: 'HS',
-            messages: [
-                { id: 1, sender: 'Vous', text: 'J\'ai besoin d\'aide pour configurer mon compte.', time: '10:50', type: 'sent', status: 'read' },
-                { id: 2, sender: 'Habipro Support', text: 'Votre demande a été prise en charge', time: '11:20', type: 'received', status: 'read' }
-            ]
-        },
-        {
-            id: 5,
-            contact: 'Aminata Bamba',
-            type: 'Locataire',
-            subject: 'Renouvellement contrat',
-            lastMessage: 'Je souhaite renouveler mon bail',
-            date: '15/08/2025',
-            time: '13:00',
-            status: 'read',
-            unreadCount: 0,
-            avatar: 'AB',
-            messages: [
-                { id: 1, sender: 'Aminata Bamba', text: 'Je souhaite renouveler mon bail', time: '13:00', type: 'received', status: 'read' }
-            ]
-        }
-    ]);
+// Fonction utilitaire pour formater les dates
+function formatDate(dateString) {
+  if (!dateString) return '-';
+  return new Date(dateString).toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+}
 
-    const aiSuggestions = [
-        '✅ Merci pour votre paiement, bien reçu !',
-        '🔧 J\'envoie un technicien aujourd\'hui pour résoudre ce problème.',
-        '📅 Nous pouvons planifier un rendez-vous cette semaine, quel jour vous convient ?',
-        '📄 Le renouvellement de votre contrat est en cours, vous recevrez les documents sous peu.'
-    ];
 
-    const typeColors = {
-        'Locataire': { bg: 'bg-blue-100', text: 'text-blue-800', icon: '👤' },
-        'Prestataire': { bg: 'bg-purple-100', text: 'text-purple-800', icon: '🛠️' },
-        'Assistance': { bg: 'bg-green-100', text: 'text-green-800', icon: '💬' }
+// ============ DETAIL MODAL ============
+function VisitRequestDetailModal({ request, isOpen, onClose, onAccept, onReject, onProposeDate }) {
+  const [confirmDate, setConfirmDate] = useState('');
+  const [confirmTime, setConfirmTime] = useState('');
+  const [confirmMessage, setConfirmMessage] = useState('');
+  const [rejectReason, setRejectReason] = useState('');
+  const [proposeDate, setProposeDate] = useState('');
+  const [showRejectForm, setShowRejectForm] = useState(false);
+  const [showAcceptForm, setShowAcceptForm] = useState(false);
+  const [showProposeForm, setShowProposeForm] = useState(false);
+
+  if (!isOpen || !request) return null;
+
+  const handleAccept = () => {
+    if (confirmDate && confirmTime) {
+      onAccept(request.id, { date: confirmDate, time: confirmTime, message: confirmMessage });
+      setConfirmDate('');
+      setConfirmTime('');
+      setConfirmMessage('');
+      setShowAcceptForm(false);
+      onClose();
+    }
+  };
+
+  const handleReject = () => {
+    onReject(request.id, { reason: rejectReason });
+    setRejectReason('');
+    setShowRejectForm(false);
+    onClose();
+  };
+
+  const handlePropose = () => {
+    if (proposeDate) {
+      onProposeDate(request.id, { proposedDate: proposeDate });
+      setProposeDate('');
+      setShowProposeForm(false);
+      onClose();
+    }
+  };
+
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'pending':
+        return { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: '🟡', label: 'En attente' };
+      case 'accepted':
+        return { bg: 'bg-green-100', text: 'text-green-800', icon: '🟢', label: 'Acceptée' };
+      case 'rejected':
+        return { bg: 'bg-red-100', text: 'text-red-800', icon: '🔴', label: 'Refusée' };
+      case 'proposed':
+        return { bg: 'bg-blue-100', text: 'text-blue-800', icon: '📅', label: 'Date proposée' };
+      case 'completed':
+        return { bg: 'bg-gray-100', text: 'text-gray-800', icon: '⚪', label: 'Terminée' };
+      default:
+        return { bg: 'bg-gray-100', text: 'text-gray-800', icon: '⚪', label: 'Inconnu' };
+    }
+  };
+
+  const statusBadge = getStatusBadge(request.status);
+
+  return (
+    <>
+      <div 
+        className="fixed inset-0 bg-black/50 z-40 transition-opacity"
+        onClick={onClose}
+      />
+      
+      <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+        <div 
+          className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* En-tête */}
+          <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 p-6 flex items-center justify-between">
+            <h2 className="text-2xl font-light text-gray-900">Détails de la demande de visite</h2>
+            <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded">
+              <X size={24} className="text-gray-600" />
+            </button>
+          </div>
+
+          {/* Contenu scrollable */}
+          <div className="overflow-y-auto max-h-[calc(90vh-140px)] p-6">
+            {/* Statut */}
+            <div className="mb-6">
+              <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium ${statusBadge.bg} ${statusBadge.text}`}>
+                {statusBadge.icon} {statusBadge.label}
+              </span>
+            </div>
+
+            {/* Informations sur le locataire */}
+            <div className="mb-8">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <User size={20} /> Informations sur le locataire
+              </h3>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Nom complet</p>
+                    <p className="font-semibold text-gray-900">{request.tenant_name || 'Non disponible'}</p>
+                  </div>
+                  <span className="px-3 py-1 bg-green-200 text-green-800 rounded-full text-xs font-medium">✅ Vérifié</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600">📞 Téléphone</p>
+                    <p className="font-semibold text-gray-900">{request.tenant_phone || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">📧 Email</p>
+                    <p className="font-semibold text-gray-900 break-all">{request.tenant_email || '-'}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Informations sur la propriété */}
+            <div className="mb-8">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Building size={20} /> Propriété demandée
+              </h3>
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 space-y-3">
+                <div>
+                  <p className="text-sm text-gray-600">Nom du bien</p>
+                  <p className="font-semibold text-gray-900">{request.property_title || 'Appartement'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">📍 Adresse</p>
+                  <p className="font-semibold text-gray-900 flex items-center gap-2">
+                    <MapPin size={16} /> {request.property_address || '-'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Détails de la demande */}
+            <div className="mb-8">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Calendar size={20} /> Détails de la demande
+              </h3>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
+                <div>
+                  <p className="text-sm text-gray-600">Date souhaitée</p>
+                  <p className="font-semibold text-gray-900">
+                    {formatDate(request.requested_date)}
+                    {request.requested_date && ` à ${new Date(request.requested_date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`}
+                  </p>
+                </div>
+                {request.proposed_date && (
+                  <div>
+                    <p className="text-sm text-blue-600">📅 Date proposée par vous</p>
+                    <p className="font-semibold text-blue-900">{formatDate(request.proposed_date)}</p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-sm text-gray-600">📝 Message du locataire</p>
+                  <p className="text-gray-700 italic">&quot;{request.message || 'Pas de message'}&quot;</p>
+                </div>
+                {request.owner_message && (
+                  <div>
+                    <p className="text-sm text-gray-600">💬 Votre message</p>
+                    <p className="text-gray-700 italic">&quot;{request.owner_message}&quot;</p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-sm text-gray-600">Date de la demande</p>
+                  <p className="font-semibold text-gray-900">{formatDate(request.created_at)}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Formulaires d'action */}
+            {request.status === 'pending' && (
+              <div className="space-y-4">
+                {/* Accepter */}
+                {!showAcceptForm && !showRejectForm && !showProposeForm && (
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        // Pré-remplir avec la date demandée par le locataire
+                        if (request.requested_date) {
+                          const requestedDate = new Date(request.requested_date);
+                          const dateStr = requestedDate.toISOString().split('T')[0]; // Format YYYY-MM-DD
+                          const timeStr = requestedDate.toTimeString().slice(0, 5); // Format HH:MM
+                          setConfirmDate(dateStr);
+                          setConfirmTime(timeStr);
+                        }
+                        setShowAcceptForm(true);
+                      }}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all font-medium">
+                      <Check size={20} /> Accepter
+                    </button>
+                    <button
+                      onClick={() => setShowProposeForm(true)}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium">
+                      <RotateCcw size={20} /> Proposer une date
+                    </button>
+                    <button
+                      onClick={() => setShowRejectForm(true)}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all font-medium">
+                      <X size={20} /> Refuser
+                    </button>
+                  </div>
+                )}
+
+                {/* Formulaire Acceptation */}
+                {showAcceptForm && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-3">
+                    <h4 className="font-semibold text-green-900">Planifier la visite</h4>
+                    {request.requested_date && (
+                      <div className="bg-blue-100 border border-blue-300 rounded-lg p-3 mb-2">
+                        <p className="text-sm text-blue-800">
+                          📅 <strong>Date demandée par le locataire :</strong> {formatDate(request.requested_date)}
+                          {request.requested_date && ` à ${new Date(request.requested_date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`}
+                        </p>
+                        <p className="text-xs text-blue-600 mt-1">
+                          ✅ Cette date est pré-remplie ci-dessous. Vous pouvez la modifier si nécessaire.
+                        </p>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                      <input
+                        type="date"
+                        value={confirmDate}
+                        onChange={(e) => setConfirmDate(e.target.value)}
+                        className="px-3 py-2 border border-green-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                      />
+                      <input
+                        type="time"
+                        value={confirmTime}
+                        onChange={(e) => setConfirmTime(e.target.value)}
+                        className="px-3 py-2 border border-green-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                      />
+                    </div>
+                    <textarea
+                      value={confirmMessage}
+                      onChange={(e) => setConfirmMessage(e.target.value)}
+                      placeholder="Message de confirmation (optionnel)..."
+                      rows="3"
+                      className="w-full px-3 py-2 border border-green-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowAcceptForm(false)}
+                        className="flex-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all text-sm">
+                        Annuler
+                      </button>
+                      <button
+                        onClick={handleAccept}
+                        className="flex-1 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all text-sm font-medium">
+                        Confirmer la visite
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Formulaire Refus */}
+                {showRejectForm && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 space-y-3">
+                    <h4 className="font-semibold text-red-900">Raison du refus</h4>
+                    <select
+                      value={rejectReason}
+                      onChange={(e) => setRejectReason(e.target.value)}
+                      className="w-full px-3 py-2 border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm">
+                      <option value="">Sélectionner une raison...</option>
+                      <option value="already_reserved">Déjà réservé</option>
+                      <option value="not_available">Bien non disponible</option>
+                      <option value="maintenance">Maintenance en cours</option>
+                      <option value="other">Autre raison</option>
+                    </select>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowRejectForm(false)}
+                        className="flex-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all text-sm">
+                        Annuler
+                      </button>
+                      <button
+                        onClick={handleReject}
+                        className="flex-1 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all text-sm font-medium">
+                        Confirmer le refus
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Formulaire Proposition */}
+                {showProposeForm && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                    <h4 className="font-semibold text-blue-900">Proposer une autre date</h4>
+                    <input
+                      type="date"
+                      value={proposeDate}
+                      onChange={(e) => setProposeDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowProposeForm(false)}
+                        className="flex-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all text-sm">
+                        Annuler
+                      </button>
+                      <button
+                        onClick={handlePropose}
+                        className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-sm font-medium">
+                        Envoyer la proposition
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {request.status === 'accepted' && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle2 size={20} className="text-green-600" />
+                  <p className="font-semibold text-green-900">Visite confirmée</p>
+                </div>
+                <p className="text-sm text-green-800">
+                  La visite a été confirmée pour le <strong>
+                    {formatDate(request.proposed_date || request.requested_date)}
+                    {(request.proposed_date || request.requested_date) && ` à ${new Date(request.proposed_date || request.requested_date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`}
+                  </strong>
+                </p>
+              </div>
+            )}
+
+            {request.status === 'rejected' && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <XCircle size={20} className="text-red-600" />
+                  <p className="font-semibold text-red-900">Demande refusée</p>
+                </div>
+                <p className="text-sm text-red-800">Cette demande a été refusée.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ============ MAIN COMPONENT ============
+export default function VisitRequestsPage() {
+  const [visitRequests, setVisitRequests] = useState([]);
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [sortBy, setSortBy] = useState('date_desc');
+
+  // Fonction pour convertir les codes de raison en textes lisibles
+  const getRejectReasonText = (reasonCode) => {
+    const reasons = {
+      'already_reserved': 'Déjà réservé',
+      'not_available': 'Bien non disponible',
+      'maintenance': 'Maintenance en cours',
+      'other': 'Autre raison'
     };
+    return reasons[reasonCode] || 'Demande refusée';
+  };
 
-    const filteredConversations = conversations.filter(conv => {
-        const matchesSearch = conv.contact.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            conv.subject.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesType = filterType === 'all' || conv.type === filterType;
-        const matchesStatus = filterStatus === 'all' || conv.status === filterStatus;
-        
-        return matchesSearch && matchesType && matchesStatus;
+  // Charger les demandes de visite depuis l'API
+  React.useEffect(() => {
+    loadVisitRequests();
+  }, []);
+
+  const loadVisitRequests = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.warn('Aucun token trouvé');
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/visit-requests/`, {
+        headers: {
+          'Authorization': `Token ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setVisitRequests(Array.isArray(data) ? data : data.results || []);
+      } else {
+        console.error('Erreur lors du chargement des demandes:', response.status);
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+    }
+  };
+
+  // Statistiques
+  const stats = {
+    pending: visitRequests.filter(r => r.status === 'pending').length,
+    accepted: visitRequests.filter(r => r.status === 'accepted').length,
+    rejected: visitRequests.filter(r => r.status === 'rejected').length,
+    completed: visitRequests.filter(r => r.status === 'completed').length
+  };
+
+  // Filtrer et trier
+  const getFilteredRequests = () => {
+    let filtered = visitRequests.filter(r => {
+      const matchesSearch =
+        (r.tenant_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (r.property_title || '').toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = filterStatus === 'all' || r.status === filterStatus;
+      return matchesSearch && matchesStatus;
     });
 
-    const handleSendMessage = () => {
-        if (messageText.trim() && selectedConversation) {
-            const newMessage = {
-                id: Date.now(),
-                sender: 'Vous',
-                text: messageText,
-                time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-                type: 'sent',
-                status: 'sent'
-            };
+    // Tri
+    switch (sortBy) {
+      case 'date_asc':
+        return filtered.sort((a, b) => new Date(a.requested_date) - new Date(b.requested_date));
+      case 'date_desc':
+        return filtered.sort((a, b) => new Date(b.requested_date) - new Date(a.requested_date));
+      case 'name':
+        return filtered.sort((a, b) => a.tenant_name.localeCompare(b.tenant_name));
+      default:
+        return filtered;
+    }
+  };
 
-            setConversations(conversations.map(conv => {
-                if (conv.id === selectedConversation.id) {
-                    return {
-                        ...conv,
-                        messages: [...conv.messages, newMessage],
-                        lastMessage: messageText,
-                        time: newMessage.time
-                    };
-                }
-                return conv;
-            }));
+  const handleViewDetails = (request) => {
+    setSelectedRequest(request);
+    setShowDetailModal(true);
+  };
 
-            setMessageText('');
-            setSelectedConversation({
-                ...selectedConversation,
-                messages: [...selectedConversation.messages, newMessage]
-            });
+  const handleAccept = async (id, data) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('Vous devez être connecté');
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/visit-requests/${id}/accept/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token ${token}`,
+          'Content-Type': 'application/json'
         }
-    };
+      });
 
-    const handleDelete = (id) => {
-        if (window.confirm('Êtes-vous sûr de vouloir supprimer cette conversation ?')) {
-            setConversations(prev => prev.filter(c => c.id !== id));
-            if (selectedConversation?.id === id) {
-                setSelectedConversation(null);
-            }
+      if (response.ok) {
+        alert('✅ Visite acceptée et confirmée !');
+        await loadVisitRequests(); // Recharger les demandes
+      } else {
+        const error = await response.json();
+        alert('Erreur: ' + (error.error || 'Impossible d\'accepter la demande'));
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+      alert('Erreur lors de l\'acceptation de la visite');
+    }
+  };
+
+  const handleReject = async (id, data) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('Vous devez être connecté');
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/visit-requests/${id}/reject/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          owner_message: getRejectReasonText(data.reason)
+        })
+      });
+
+      if (response.ok) {
+        alert('❌ Demande refusée. Notification envoyée au locataire.');
+        await loadVisitRequests(); // Recharger les demandes
+      } else {
+        const error = await response.json();
+        alert('Erreur: ' + (error.error || 'Impossible de refuser la demande'));
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+      alert('Erreur lors du refus de la visite');
+    }
+  };
+
+  const handleProposeDate = async (id, data) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('Vous devez être connecté');
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/visit-requests/${id}/propose-date/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          proposed_date: data.proposedDate,
+          owner_message: 'Proposition d\'une nouvelle date'
+        })
+      });
+
+      if (response.ok) {
+        alert(`📅 Proposition de date ${formatDate(data.proposedDate)} envoyée au locataire.`);
+        await loadVisitRequests(); // Recharger les demandes
+      } else {
+        const error = await response.json();
+        alert('Erreur: ' + (error.error || 'Impossible de proposer une date'));
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+      alert('Erreur lors de la proposition de date');
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cette demande ?')) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('Vous devez être connecté');
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/visit-requests/${id}/`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Token ${token}`,
         }
-    };
+      });
 
-    const handleSelectConversation = (conv) => {
-        setSelectedConversation(conv);
-        // Marquer comme lu
-        setConversations(conversations.map(c => 
-            c.id === conv.id ? { ...c, status: 'read', unreadCount: 0 } : c
-        ));
-    };
+      if (response.ok) {
+        alert('✅ Demande supprimée avec succès');
+        await loadVisitRequests();
+      } else {
+        const error = await response.json();
+        alert('Erreur: ' + (error.error || 'Impossible de supprimer la demande'));
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+      alert('Erreur lors de la suppression');
+    }
+  };
 
-    const totalUnread = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
+  const filteredRequests = getFilteredRequests();
 
-    return (
-        <div className="h-screen bg-gray-50 p-4 flex flex-col">
-            {/* En-tête */}
-            <div className="mb-2">
-                <div className="flex justify-between items-center mb-3">
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-800">💬 Messagerie</h1>
-                        <p className="text-gray-600 mt-1">
-                            Centralisez et suivez toutes vos conversations avec vos locataires, prestataires et partenaires
-                        </p>
-                    </div>
-                    <div className="flex gap-3">
-                        <button className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 shadow-lg transition-all transform hover:scale-105">
-                            <Plus size={20} />
-                            Nouveau message
-                        </button>
-                    </div>
-                </div>
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'pending':
+        return { bg: 'bg-yellow-100', text: 'text-yellow-800', label: '🟡 En attente' };
+      case 'accepted':
+        return { bg: 'bg-green-100', text: 'text-green-800', label: '🟢 Acceptée' };
+      case 'rejected':
+        return { bg: 'bg-red-100', text: 'text-red-800', label: '🔴 Refusée' };
+      case 'proposed':
+        return { bg: 'bg-blue-100', text: 'text-blue-800', label: '📅 Date proposée' };
+      case 'completed':
+        return { bg: 'bg-gray-100', text: 'text-gray-800', label: '⚪ Terminée' };
+      default:
+        return { bg: 'bg-gray-100', text: 'text-gray-800', label: '⚪' };
+    }
+  };
 
-                {/* Statistiques rapides */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-2">
-                    <div className="bg-white p-4 rounded-lg shadow-md border-l-4 border-blue-500">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-gray-600 text-sm">Total Conversations</p>
-                                <p className="text-2xl font-bold text-gray-800">{conversations.length}</p>
-                            </div>
-                            <MessageCircle className="text-blue-500" size={32} />
-                        </div>
-                    </div>
-                    <div className="bg-white p-4 rounded-lg shadow-md border-l-4 border-orange-500">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-gray-600 text-sm">Non lus</p>
-                                <p className="text-2xl font-bold text-gray-800">{totalUnread}</p>
-                            </div>
-                            <Mail className="text-orange-500" size={32} />
-                        </div>
-                    </div>
-                    <div className="bg-white p-4 rounded-lg shadow-md border-l-4 border-purple-500">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-gray-600 text-sm">Locataires</p>
-                                <p className="text-2xl font-bold text-gray-800">
-                                    {conversations.filter(c => c.type === 'Locataire').length}
-                                </p>
-                            </div>
-                            <Users className="text-purple-500" size={32} />
-                        </div>
-                    </div>
-                    <div className="bg-white p-4 rounded-lg shadow-md border-l-4 border-green-500">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-gray-600 text-sm">Prestataires</p>
-                                <p className="text-2xl font-bold text-gray-800">
-                                    {conversations.filter(c => c.type === 'Prestataire').length}
-                                </p>
-                            </div>
-                            <Home className="text-green-500" size={32} />
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Interface de messagerie */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
-                {/* Liste des conversations - Colonne gauche */}
-                <div className="lg:col-span-1 bg-white rounded-lg shadow-md flex flex-col min-h-0">
-                    {/* Barre de recherche et filtres */}
-                    <div className="p-4 border-b bg-gray-50">
-                        <div className="relative mb-3">
-                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                            <input
-                                type="text"
-                                placeholder="Rechercher un contact..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-                            />
-                        </div>
-                        <button
-                            onClick={() => setShowFilters(!showFilters)}
-                            className={`w-full px-4 py-2 border rounded-md flex items-center justify-center gap-2 transition-colors ${
-                                showFilters ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                            }`}
-                        >
-                            <Filter size={18} />
-                            Filtres
-                        </button>
-
-                        {showFilters && (
-                            <div className="mt-3 space-y-2">
-                                <select
-                                    value={filterType}
-                                    onChange={(e) => setFilterType(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                                >
-                                    <option value="all">Tous les types</option>
-                                    <option value="Locataire">Locataires</option>
-                                    <option value="Prestataire">Prestataires</option>
-                                    <option value="Assistance">Assistance</option>
-                                </select>
-                                <select
-                                    value={filterStatus}
-                                    onChange={(e) => setFilterStatus(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                                >
-                                    <option value="all">Tous les statuts</option>
-                                    <option value="unread">Non lus</option>
-                                    <option value="read">Lus</option>
-                                </select>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Liste des conversations */}
-                    <div className="flex-1 overflow-y-auto min-h-0">
-                        {filteredConversations.map((conv) => (
-                            <div
-                                key={conv.id}
-                                onClick={() => handleSelectConversation(conv)}
-                                className={`p-4 border-b cursor-pointer transition-colors hover:bg-gray-50 ${
-                                    selectedConversation?.id === conv.id ? 'bg-green-50 border-l-4 border-green-500' : ''
-                                } ${conv.status === 'unread' ? 'bg-blue-50' : ''}`}
-                            >
-                                <div className="flex items-start gap-3">
-                                    <div className={`w-12 h-12 rounded-full ${
-                                        conv.status === 'unread' ? 'bg-blue-500' : 'bg-gray-400'
-                                    } flex items-center justify-center text-white font-bold flex-shrink-0`}>
-                                        {conv.avatar}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between mb-1">
-                                            <h3 className={`font-semibold text-gray-800 truncate ${
-                                                conv.status === 'unread' ? 'text-blue-600' : ''
-                                            }`}>
-                                                {conv.contact}
-                                            </h3>
-                                            <span className="text-xs text-gray-500">{conv.time}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className={`px-2 py-0.5 rounded-full text-xs ${
-                                                typeColors[conv.type].bg
-                                            } ${typeColors[conv.type].text}`}>
-                                                {typeColors[conv.type].icon} {conv.type}
-                                            </span>
-                                        </div>
-                                        <p className="text-sm text-gray-600 truncate">{conv.subject}</p>
-                                        <p className={`text-sm text-gray-500 truncate mt-1 ${
-                                            conv.status === 'unread' ? 'font-semibold text-blue-600' : ''
-                                        }`}>
-                                            {conv.lastMessage}
-                                        </p>
-                                        {conv.unreadCount > 0 && (
-                                            <span className="inline-block mt-2 bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-                                                {conv.unreadCount} nouveau{conv.unreadCount > 1 ? 'x' : ''}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-
-                        {filteredConversations.length === 0 && (
-                            <div className="p-8 text-center text-gray-500">
-                                <MessageCircle size={48} className="mx-auto mb-4 text-gray-300" />
-                                <p>Aucune conversation trouvée</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Zone de conversation - Colonnes droites */}
-                <div className="lg:col-span-2 bg-white rounded-lg shadow-md flex flex-col overflow-hidden min-h-0">
-                    {selectedConversation ? (
-                        <>
-                            {/* En-tête de la conversation */}
-                            <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center text-white font-bold">
-                                        {selectedConversation.avatar}
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-gray-800">{selectedConversation.contact}</h3>
-                                        <p className="text-sm text-gray-600">{selectedConversation.subject}</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <button className="p-2 hover:bg-gray-200 rounded-lg transition-colors" title="Télécharger la conversation">
-                                        <Download size={20} className="text-gray-600" />
-                                    </button>
-                                    <button className="p-2 hover:bg-gray-200 rounded-lg transition-colors" title="Appeler">
-                                        <Phone size={20} className="text-gray-600" />
-                                    </button>
-                                    <button 
-                                        onClick={() => handleDelete(selectedConversation.id)}
-                                        className="p-2 hover:bg-red-100 rounded-lg transition-colors" 
-                                        title="Supprimer"
-                                    >
-                                        <Trash2 size={20} className="text-red-600" />
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Messages */}
-                            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
-                                {selectedConversation.messages.map((msg) => (
-                                    <div
-                                        key={msg.id}
-                                        className={`flex ${msg.type === 'sent' ? 'justify-end' : 'justify-start'}`}
-                                    >
-                                        <div className={`max-w-[70%] ${msg.type === 'sent' ? 'order-2' : 'order-1'}`}>
-                                            <div className={`rounded-lg p-3 ${
-                                                msg.type === 'sent'
-                                                    ? 'bg-green-500 text-white'
-                                                    : 'bg-white text-gray-800 border border-gray-200'
-                                            }`}>
-                                                {msg.type === 'received' && (
-                                                    <p className="text-xs font-semibold mb-1 text-gray-600">{msg.sender}</p>
-                                                )}
-                                                <p className="text-sm">{msg.text}</p>
-                                                <div className={`flex items-center gap-2 mt-2 text-xs ${
-                                                    msg.type === 'sent' ? 'text-white/80 justify-end' : 'text-gray-500'
-                                                }`}>
-                                                    <span>{msg.time}</span>
-                                                    {msg.type === 'sent' && (
-                                                        <>
-                                                            {msg.status === 'read' ? (
-                                                                <CheckCheck size={14} />
-                                                            ) : msg.status === 'sent' ? (
-                                                                <Check size={14} />
-                                                            ) : (
-                                                                <Clock size={14} />
-                                                            )}
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Assistant IA */}
-                            {showAiAssistant && (
-                                <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 border-t border-purple-200">
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <Sparkles className="text-purple-600" size={20} />
-                                        <span className="font-semibold text-gray-800">🤖 Réponses suggérées par l'IA</span>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                        {aiSuggestions.map((suggestion, index) => (
-                                            <button
-                                                key={index}
-                                                onClick={() => setMessageText(suggestion)}
-                                                className="text-left p-3 bg-white rounded-lg border border-purple-200 hover:bg-purple-50 hover:border-purple-400 transition-all text-sm"
-                                            >
-                                                {suggestion}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Zone de saisie */}
-                            <div className="p-4 border-t bg-white">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <button
-                                        onClick={() => setShowAiAssistant(!showAiAssistant)}
-                                        className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${
-                                            showAiAssistant
-                                                ? 'bg-purple-600 text-white'
-                                                : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                                        }`}
-                                    >
-                                        <Sparkles size={16} />
-                                        Assistant IA
-                                    </button>
-                                </div>
-                                <div className="flex items-end gap-2">
-                                    <button className="p-3 hover:bg-gray-100 rounded-lg transition-colors">
-                                        <Paperclip size={20} className="text-gray-600" />
-                                    </button>
-                                    <textarea
-                                        value={messageText}
-                                        onChange={(e) => setMessageText(e.target.value)}
-                                        onKeyPress={(e) => {
-                                            if (e.key === 'Enter' && !e.shiftKey) {
-                                                e.preventDefault();
-                                                handleSendMessage();
-                                            }
-                                        }}
-                                        placeholder="Écrivez votre message..."
-                                        className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
-                                        rows="2"
-                                    />
-                                    <button
-                                        onClick={handleSendMessage}
-                                        className="p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
-                                    >
-                                        <Send size={20} />
-                                    </button>
-                                </div>
-                            </div>
-                        </>
-                    ) : (
-                        <div className="flex-1 flex items-center justify-center text-gray-400">
-                            <div className="text-center">
-                                <MessageCircle size={64} className="mx-auto mb-4" />
-                                <p className="text-lg">Sélectionnez une conversation</p>
-                                <p className="text-sm">pour commencer à échanger</p>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* En-tête */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          <h1 className="text-4xl font-light text-gray-900 mb-2">📅 Gestion des demandes de visite</h1>
+          <p className="text-gray-600">Consultez les demandes envoyées par les locataires pour visiter vos propriétés et gérez-les facilement.</p>
         </div>
-    );
-};
+      </div>
 
-export default MessagerieIntelligente;
+      {/* Actions rapides et stats */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="flex gap-3 flex-wrap">
+              <button
+                onClick={loadVisitRequests}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all text-sm font-medium">
+                🔄 Actualiser
+              </button>
+              <button className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-all text-sm font-medium">
+                📊 Statistiques
+              </button>
+            </div>
+          </div>
+
+          {/* Dashboard stats */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <div className="text-3xl font-light text-yellow-900 mb-1">{stats.pending}</div>
+              <div className="text-sm text-yellow-800">🟡 En attente</div>
+            </div>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="text-3xl font-light text-green-900 mb-1">{stats.accepted}</div>
+              <div className="text-sm text-green-800">🟢 Confirmées</div>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="text-3xl font-light text-red-900 mb-1">{stats.rejected}</div>
+              <div className="text-sm text-red-800">🔴 Refusées</div>
+            </div>
+            <div className="bg-gray-100 border border-gray-300 rounded-lg p-4">
+              <div className="text-3xl font-light text-gray-900 mb-1">{stats.completed}</div>
+              <div className="text-sm text-gray-700">⚪ Terminées</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filtres et recherche */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <div className="flex items-center gap-4 flex-wrap">
+            {/* Recherche */}
+            <div className="flex-1 min-w-[250px] relative">
+              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Chercher par nom de locataire ou propriété..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+            </div>
+
+            {/* Filtres */}
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+              <option value="all">Tous les statuts</option>
+              <option value="pending">🟡 En attente</option>
+              <option value="accepted">🟢 Acceptée</option>
+              <option value="rejected">🔴 Refusée</option>
+              <option value="proposed">📅 Date proposée</option>
+              <option value="completed">⚪ Terminée</option>
+            </select>
+
+            {/* Tri */}
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+              <option value="date_desc">Date (récent)</option>
+              <option value="date_asc">Date (ancien)</option>
+              <option value="name">Nom (A-Z)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Tableau principal */}
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          {filteredRequests.length === 0 ? (
+            <div className="text-center py-12">
+              <Calendar size={48} className="mx-auto text-gray-300 mb-4" />
+              <h3 className="text-xl font-light text-gray-600 mb-2">Aucune demande trouvée</h3>
+              <p className="text-gray-500">Ajustez vos critères de recherche.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Locataire</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Bien concerné</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Date souhaitée</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Message</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Statut</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {filteredRequests.map((request) => {
+                    const statusBadge = getStatusBadge(request.status);
+                    return (
+                      <tr key={request.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="font-medium text-gray-900">{request.tenant_name || 'Locataire'}</div>
+                          <div className="text-xs text-gray-500">{request.tenant_phone || '-'}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="font-medium text-gray-900">{request.property_title || 'Propriété'}</div>
+                          <div className="text-xs text-gray-500 flex items-center gap-1">
+                            <MapPin size={14} /> {request.property_address || 'Adresse non disponible'}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="font-medium text-gray-900">{formatDate(request.requested_date)}</div>
+                          <div className="text-xs text-gray-500">{new Date(request.requested_date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-700 max-w-xs truncate">{request.message || 'Pas de message'}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${statusBadge.bg} ${statusBadge.text}`}>
+                            {statusBadge.label}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleViewDetails(request)}
+                              className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-all"
+                              title="Voir détails">
+                              <Eye size={18} />
+                            </button>
+                            {request.status === 'pending' && (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setSelectedRequest(request);
+                                    setShowDetailModal(true);
+                                  }}
+                                  className="p-2 text-green-600 hover:bg-green-50 rounded transition-all"
+                                  title="Accepter">
+                                  <Check size={18} />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setSelectedRequest(request);
+                                    setShowDetailModal(true);
+                                  }}
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded transition-all"
+                                  title="Refuser">
+                                  <X size={18} />
+                                </button>
+                              </>
+                            )}
+                            {request.status === 'accepted' && (
+                              <button
+                                onClick={() => {
+                                  const date = request.proposed_date || request.requested_date;
+                                  const formattedDate = formatDate(date);
+                                  const formattedTime = new Date(date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+                                  alert(`📅 Visite prévue pour le ${formattedDate} à ${formattedTime}`);
+                                }}
+                                className="p-2 text-gray-600 hover:bg-gray-50 rounded transition-all"
+                                title="Voir calendrier">
+                                <Calendar size={18} />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDelete(request.id)}
+                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-all"
+                              title="Supprimer">
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Résumé */}
+        <div className="mt-6 text-center text-sm text-gray-600">
+          Affichage de {filteredRequests.length} demande(s) sur {visitRequests.length}
+        </div>
+      </div>
+
+      {/* Modal détails */}
+      <VisitRequestDetailModal
+        request={selectedRequest}
+        isOpen={showDetailModal}
+        onClose={() => setShowDetailModal(false)}
+        onAccept={handleAccept}
+        onReject={handleReject}
+        onProposeDate={handleProposeDate}
+      />
+    </div>
+  );
+}

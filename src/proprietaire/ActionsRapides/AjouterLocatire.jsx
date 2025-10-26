@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, User, Home, DollarSign, FileText } from 'lucide-react';
 
-const TenantFormModal = ({ isOpen, onClose }) => {
+const API_BASE_URL = 'http://localhost:8000/api';
+
+const TenantFormModal = ({ isOpen, onClose, onSuccess }) => {
     const [activeTab, setActiveTab] = useState('personal');
     const [formData, setFormData] = useState({
         // Informations personnelles
+        userId: '',
         fullName: '',
         phone: '',
         email: '',
@@ -25,19 +28,89 @@ const TenantFormModal = ({ isOpen, onClose }) => {
         idDocument: null,
 
         // Autres informations
-        additionalNotes: ''
+        additionalNotes: '',
+
+        // Pour le backend
+        visitRequestId: ''
     });
 
     const [errors, setErrors] = useState({});
+    const [selectedTenantFromVisit, setSelectedTenantFromVisit] = useState('');
 
-    // Données simulées - à remplacer par vos vraies données
-    const availableProperties = [
-        'Villa 4 pièces à Cocody',
-        'Appartement 2 chambres à Plateau',
-        'Studio meublé à Marcory',
-        'Duplex 3 chambres à Riviera',
-        'Maison 5 pièces à Deux-Plateaux'
-    ];
+    // Données chargées depuis l'API
+    const [tenantsFromAcceptedVisits, setTenantsFromAcceptedVisits] = useState([]);
+    const [availableProperties, setAvailableProperties] = useState([]);
+    const [loading, setLoading] = useState(false);
+
+    // Charger les locataires avec visites acceptées
+    useEffect(() => {
+        if (isOpen) {
+            loadTenantsFromAcceptedVisits();
+            loadProperties();
+        }
+    }, [isOpen]);
+
+    const loadTenantsFromAcceptedVisits = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_BASE_URL}/tenants/from-accepted-visits/`, {
+                headers: {
+                    'Authorization': `Token ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setTenantsFromAcceptedVisits(data);
+            }
+        } catch (error) {
+            console.error('Erreur lors du chargement des locataires:', error);
+        }
+    };
+
+    const loadProperties = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_BASE_URL}/properties/`, {
+                headers: {
+                    'Authorization': `Token ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setAvailableProperties(Array.isArray(data) ? data : (data.results || []));
+            }
+        } catch (error) {
+            console.error('Erreur lors du chargement des propriétés:', error);
+        }
+    };
+
+    // Pré-remplir le formulaire quand un locataire est sélectionné
+    const handleTenantSelection = (e) => {
+        const tenantId = e.target.value;
+        setSelectedTenantFromVisit(tenantId);
+
+        if (tenantId) {
+            const selectedTenant = tenantsFromAcceptedVisits.find(t => t.id.toString() === tenantId);
+            if (selectedTenant) {
+                setFormData(prev => ({
+                    ...prev,
+                    userId: selectedTenant.id,
+                    fullName: selectedTenant.full_name || '',
+                    email: selectedTenant.email || '',
+                    phone: selectedTenant.phone || '',
+                    linkedProperty: selectedTenant.property_id || '',
+                    visitRequestId: selectedTenant.visit_request_id || ''
+                }));
+            }
+        } else {
+            // Réinitialiser si aucune sélection
+            resetForm();
+        }
+    };
 
     const paymentMethods = [
         'Mobile Money',
@@ -60,6 +133,19 @@ const TenantFormModal = ({ isOpen, onClose }) => {
             ...prev,
             [name]: type === 'checkbox' ? checked : value
         }));
+
+        // Si c'est la sélection de propriété, pré-remplir le loyer
+        if (name === 'linkedProperty' && value) {
+            const selectedProperty = availableProperties.find(p => p.id.toString() === value);
+            if (selectedProperty && selectedProperty.prix) {
+                setFormData(prev => ({
+                    ...prev,
+                    linkedProperty: value,
+                    monthlyRent: selectedProperty.prix
+                }));
+                console.log('💰 Loyer pré-rempli:', selectedProperty.prix, 'FCFA');
+            }
+        }
 
         // Supprimer l'erreur si le champ est maintenant rempli
         if (errors[name] && value.trim() !== '') {
@@ -85,7 +171,7 @@ const TenantFormModal = ({ isOpen, onClose }) => {
         if (!formData.fullName.trim()) newErrors.fullName = 'Le nom complet est obligatoire';
         if (!formData.phone.trim()) newErrors.phone = 'Le téléphone est obligatoire';
         if (!formData.linkedProperty) newErrors.linkedProperty = 'La propriété liée est obligatoire';
-        if (!formData.monthlyRent.trim()) newErrors.monthlyRent = 'Le montant du loyer est obligatoire';
+        if (!formData.monthlyRent || formData.monthlyRent === '' || formData.monthlyRent <= 0) newErrors.monthlyRent = 'Le montant du loyer est obligatoire';
         if (!formData.leaseStartDate) newErrors.leaseStartDate = 'La date de début de bail est obligatoire';
 
         // Validation du format téléphone (basique)
@@ -104,13 +190,78 @@ const TenantFormModal = ({ isOpen, onClose }) => {
         return Object.keys(newErrors).length === 0;
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (validateForm()) {
-            console.log('Données du locataire:', formData);
-            alert('Locataire enregistré avec succès !');
-            onClose();
-            resetForm();
-            // Ici vous pourriez envoyer les données à votre API
+            setLoading(true);
+            try {
+                const token = localStorage.getItem('token');
+
+                // Utiliser FormData pour envoyer les fichiers
+                const formDataToSend = new FormData();
+
+                formDataToSend.append('user', formData.userId || '');
+                formDataToSend.append('full_name', formData.fullName);
+                formDataToSend.append('phone', formData.phone);
+                formDataToSend.append('email', formData.email);
+                formDataToSend.append('id_number', formData.idNumber);
+                formDataToSend.append('linked_property', formData.linkedProperty);
+                formDataToSend.append('lease_start_date', formData.leaseStartDate);
+                if (formData.leaseEndDate) {
+                    formDataToSend.append('lease_end_date', formData.leaseEndDate);
+                }
+                formDataToSend.append('monthly_rent', parseInt(formData.monthlyRent));
+                formDataToSend.append('security_deposit', formData.securityDeposit);
+                formDataToSend.append('payment_method', formData.paymentMethod);
+                formDataToSend.append('status', 'active');
+                formDataToSend.append('additional_notes', formData.additionalNotes);
+
+                // Ajouter les fichiers s'ils existent
+                if (formData.signedContract) {
+                    formDataToSend.append('signed_contract', formData.signedContract);
+                }
+                if (formData.idDocument) {
+                    formDataToSend.append('id_document', formData.idDocument);
+                }
+
+                // Si créé depuis une visite acceptée
+                if (formData.visitRequestId) {
+                    formDataToSend.append('visit_request_id', formData.visitRequestId);
+                }
+
+                const response = await fetch(`${API_BASE_URL}/tenants/`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Token ${token}`
+                        // Ne pas définir Content-Type, le navigateur le fera automatiquement avec la boundary
+                    },
+                    body: formDataToSend
+                });
+
+                if (response.ok) {
+                    alert('✅ Locataire enregistré avec succès !');
+                    // Appeler le callback de succès pour rafraîchir la liste
+                    if (onSuccess) {
+                        onSuccess();
+                    }
+                    onClose();
+                    resetForm();
+                } else {
+                    const errorData = await response.json();
+                    console.error('Erreur:', errorData);
+
+                    // Afficher un message d'erreur plus clair
+                    if (errorData.error) {
+                        alert('❌ ' + errorData.error);
+                    } else {
+                        alert('❌ Erreur lors de l\'enregistrement: ' + JSON.stringify(errorData));
+                    }
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+                alert('❌ Erreur lors de l\'enregistrement du locataire');
+            } finally {
+                setLoading(false);
+            }
         } else {
             alert('Veuillez corriger les erreurs dans le formulaire.');
         }
@@ -191,6 +342,30 @@ const TenantFormModal = ({ isOpen, onClose }) => {
                         {activeTab === 'personal' && (
                             <div className="space-y-4">
                                 <h3 className="text-lg font-semibold text-gray-800 mb-4">👤 Informations personnelles</h3>
+
+                                {/* Select pour choisir depuis les visites acceptées */}
+                                {tenantsFromAcceptedVisits.length > 0 && (
+                                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                                        <label className="block text-sm font-semibold text-blue-900 mb-2">
+                                            🎯 Sélectionner un locataire avec visite acceptée
+                                        </label>
+                                        <select
+                                            value={selectedTenantFromVisit}
+                                            onChange={handleTenantSelection}
+                                            className="w-full px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                        >
+                                            <option value="">-- Nouveau locataire ou sélectionner --</option>
+                                            {tenantsFromAcceptedVisits.map(tenant => (
+                                                <option key={tenant.id} value={tenant.id}>
+                                                    {tenant.full_name} - {tenant.property_title}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className="text-xs text-blue-700 mt-1">
+                                            💡 Sélectionnez un locataire pour pré-remplir automatiquement le formulaire
+                                        </p>
+                                    </div>
+                                )}
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -278,11 +453,15 @@ const TenantFormModal = ({ isOpen, onClose }) => {
                                     >
                                         <option value="">Sélectionner une propriété</option>
                                         {availableProperties.map(property => (
-                                            <option key={property} value={property}>{property}</option>
+                                            <option key={property.id} value={property.id}>
+                                                {property.titre} - {property.adresse}
+                                            </option>
                                         ))}
                                     </select>
                                     {errors.linkedProperty && <p className="text-red-500 text-sm mt-1">{errors.linkedProperty}</p>}
-                                    <p className="text-xs text-gray-500 mt-1">Liste des biens déjà enregistrés</p>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        {selectedTenantFromVisit ? '✅ Pré-rempli automatiquement' : 'Liste de vos propriétés'}
+                                    </p>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
@@ -340,6 +519,11 @@ const TenantFormModal = ({ isOpen, onClose }) => {
                                         <span className="absolute right-3 top-2 text-gray-500">FCFA</span>
                                     </div>
                                     {errors.monthlyRent && <p className="text-red-500 text-sm mt-1">{errors.monthlyRent}</p>}
+                                    {formData.linkedProperty && formData.monthlyRent && (
+                                        <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                                            ✅ Montant pré-rempli automatiquement depuis la propriété sélectionnée
+                                        </p>
+                                    )}
                                 </div>
 
                                 <div>
