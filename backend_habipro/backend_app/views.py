@@ -11,8 +11,8 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from mimetypes import guess_type  
-
-from .models import Document, Property, PropertyMedia, VisitRequest, Tenant, Location, Contract, Payment
+import requests 
+from .models import Document, Property, PropertyMedia, VisitRequest, Tenant, Location, Contract, Payment ,JuridicalDocument, JuridicalChatMessage ,Prestataire ,Notification  ,MaintenanceRequest
 from .serializers import (
     # Serializers d'authentification
     RegisterSerializer,
@@ -34,9 +34,20 @@ from .serializers import (
     ContractSerializer,
     ContractCreateSerializer,
     PaymentSerializer,
-    PaymentCreateSerializer,
-)
+    TenantPaymentCreateSerializer,
+    JuridicalDocumentSerializer,
+    JuridicalChatMessageSerializer,
+    AskQuestionSerializer ,
+    PrestataireSerializer, 
+    PrestataireListSerializer, 
+    PrestataireCreateSerializer ,
+    MaintenanceRequestSerializer,
+    MaintenanceRequestCreateSerializer,
+    MaintenanceRequestUpdateSerializer ,
 
+    
+)
+import os
 import io
 from datetime import datetime
 
@@ -1334,18 +1345,150 @@ class ContractViewSet(viewsets.ModelViewSet):
 
         if user.role == 'proprietaire':
             # Le propriétaire voit ses contrats
-            return Contract.objects.filter(owner=user)
+            return Contract.objects.filter(owner=user).select_related(
+                'tenant', 'property', 'owner'
+            )
         elif user.role == 'locataire':
             # Le locataire voit ses contrats
             tenant = Tenant.objects.filter(user=user).first()
             if tenant:
-                return Contract.objects.filter(tenant=tenant)
+                return Contract.objects.filter(tenant=tenant).select_related(
+                    'tenant', 'property', 'owner'
+                )
 
         return Contract.objects.none()
 
-    def perform_create(self, serializer):
-        """Affecter automatiquement le propriétaire lors de la création"""
-        serializer.save(owner=self.request.user)
+    def create(self, request, *args, **kwargs):
+        """Crée un nouveau contrat avec validation"""
+        import json
+        
+        # 🔍 DEBUG : Afficher les données reçues
+        print("=" * 80)
+        print("📥 DONNÉES CONTRAT REÇUES:")
+        print(json.dumps(request.data, indent=2, ensure_ascii=False, default=str))
+        print("=" * 80)
+        
+        serializer = self.get_serializer(data=request.data)
+        
+        # Valider les données
+        if not serializer.is_valid():
+            print("❌ ERREURS DE VALIDATION CONTRAT:")
+            print(json.dumps(serializer.errors, indent=2, ensure_ascii=False))
+            print("=" * 80)
+            return Response(
+                {
+                    'error': 'Erreur de validation',
+                    'details': serializer.errors
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # ✅ Validation manuelle du propriétaire
+        property_obj = serializer.validated_data.get('property')
+        tenant_obj = serializer.validated_data.get('tenant')
+        
+        if not property_obj:
+            return Response(
+                {'error': 'La propriété est requise'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not tenant_obj:
+            return Response(
+                {'error': 'Le locataire est requis'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Vérifier que la propriété appartient au propriétaire connecté
+        if property_obj.owner != request.user:
+            return Response(
+                {'error': 'Cette propriété ne vous appartient pas'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Vérifier que le locataire appartient au propriétaire
+        if tenant_obj.owner != request.user:
+            return Response(
+                {'error': 'Ce locataire ne vous appartient pas'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            # Créer le contrat
+            contract = serializer.save(owner=request.user)
+            
+            # Sérialiser avec le serializer complet
+            response_serializer = ContractSerializer(
+                contract,
+                context={'request': request}
+            )
+            
+            print("✅ CONTRAT CRÉÉ AVEC SUCCÈS")
+            print("=" * 80)
+            
+            headers = self.get_success_headers(serializer.data)
+            return Response(
+                {
+                    'message': 'Contrat créé avec succès',
+                    'data': response_serializer.data
+                },
+                status=status.HTTP_201_CREATED,
+                headers=headers
+            )
+            
+        except Exception as e:
+            print(f"💥 ERREUR LORS DE LA CRÉATION DU CONTRAT: {e}")
+            import traceback
+            traceback.print_exc()
+            print("=" * 80)
+            
+            return Response(
+                {
+                    'error': 'Erreur lors de la création du contrat',
+                    'details': str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def update(self, request, *args, **kwargs):
+        """Met à jour un contrat"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        
+        # Vérifier que c'est bien le propriétaire
+        if instance.owner != request.user:
+            return Response(
+                {'error': 'Vous ne pouvez modifier que vos propres contrats'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        return Response({
+            'message': 'Contrat mis à jour avec succès',
+            'data': serializer.data
+        })
+
+    def destroy(self, request, *args, **kwargs):
+        """Supprime un contrat"""
+        instance = self.get_object()
+        
+        # Vérifier que c'est bien le propriétaire
+        if instance.owner != request.user:
+            return Response(
+                {'error': 'Vous ne pouvez supprimer que vos propres contrats'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        titre = f"{instance.contract_type} - {instance.property.titre}"
+        self.perform_destroy(instance)
+        
+        return Response(
+            {'message': f'Le contrat "{titre}" a été supprimé avec succès'},
+            status=status.HTTP_200_OK
+        )
 
     @action(detail=True, methods=['post'], url_path='activate')
     def activate_contract(self, request, pk=None):
@@ -1419,7 +1562,7 @@ class ContractViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'], url_path='documents')
     def documents(self, request, pk=None):
-        """Retourne la liste des documents liés à ce contrat (URL absolute + mime)"""
+        """Retourne la liste des documents liés à ce contrat"""
         contract = self.get_object()
         docs = []
 
@@ -1453,7 +1596,6 @@ class ContractViewSet(viewsets.ModelViewSet):
 
         return Response(docs, status=status.HTTP_200_OK)
 
-
 # ==============================================
 # VIEWSET POUR LES PAIEMENTS
 # ==============================================
@@ -1464,12 +1606,11 @@ class PaymentViewSet(viewsets.ModelViewSet):
     queryset = Payment.objects.all()
     serializer_class = PaymentSerializer
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = (MultiPartParser, FormParser, JSONParser)
 
     def get_serializer_class(self):
-        """Retourne le serializer approprié selon l'action"""
-        if self.action == 'create':
-            return PaymentCreateSerializer
+        """Retourne le serializer approprié"""
+        if self.action == 'create' and self.request.user.role == 'locataire':
+            return TenantPaymentCreateSerializer
         return PaymentSerializer
 
     def get_queryset(self):
@@ -1477,291 +1618,1129 @@ class PaymentViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if user.role == 'proprietaire':
-            # Le propriétaire voit les paiements reçus
-            return Payment.objects.filter(owner=user)
+            # Le propriétaire voit tous les paiements reçus
+            return Payment.objects.filter(owner=user).select_related(
+                'tenant', 'contract', 'contract__property'
+            )
         elif user.role == 'locataire':
-            # Le locataire voit ses paiements
+            # Le locataire voit ses propres paiements
             tenant = Tenant.objects.filter(user=user).first()
             if tenant:
-                return Payment.objects.filter(tenant=tenant)
+                return Payment.objects.filter(tenant=tenant).select_related(
+                    'contract', 'contract__property', 'owner'
+                )
 
         return Payment.objects.none()
 
-    def perform_create(self, serializer):
-        """Affecter automatiquement le propriétaire lors de la création"""
-        from rest_framework.exceptions import ValidationError
+    def create(self, request, *args, **kwargs):
+        """Créer un nouveau paiement (locataire uniquement)"""
+        if request.user.role != 'locataire':
+            return Response({
+                'error': 'Seuls les locataires peuvent effectuer des paiements'
+            }, status=status.HTTP_403_FORBIDDEN)
 
-        user = self.request.user
-        print(f"[DEBUG] Données reçues: {self.request.data}")
-        print(f"[DEBUG] User: {user.email}, Role: {user.role}")
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payment = serializer.save()
 
-        # Récupérer les données du paiement
-        tenant = serializer.validated_data.get('tenant')
-        property_obj = serializer.validated_data.get('property')
-        location = serializer.validated_data.get('location')
-        payment_month = serializer.validated_data.get('payment_month')
-
-        print(f"[DEBUG] Tenant: {tenant}, Property: {property_obj}, Location: {location}")
-
-        # Vérifier s'il existe déjà un paiement pour ce locataire, cette propriété et ce mois
-        existing_payment = Payment.objects.filter(
-            tenant=tenant,
-            property=property_obj,
-            payment_month=payment_month,
-            status='completed'
-        ).first()
-
-        if existing_payment:
-            raise ValidationError({
-                'payment_month': f'Un paiement pour le mois de {payment_month} a déjà été effectué pour cette propriété.'
-            })
-
-        # Déterminer le propriétaire
-        if user.role == 'proprietaire':
-            owner = user
-        elif user.role == 'locataire':
-            # Si c'est un locataire qui paie, récupérer le propriétaire de la propriété
-            owner = property_obj.owner if property_obj else None
-        else:
-            owner = None
-
-        # Générer une référence de transaction unique
-        import uuid
-        transaction_ref = f"PAY-{uuid.uuid4().hex[:8].upper()}"
-
-        serializer.save(
-            owner=owner,
-            transaction_reference=transaction_ref
+        # Créer une notification pour le propriétaire
+        Notification.objects.create(
+            user=payment.owner,
+            notification_type='payment',
+            title='Nouveau paiement reçu',
+            message=f'{payment.tenant.full_name} a effectué un paiement de {payment.amount} FCFA pour le mois de {payment.payment_month}.'
         )
 
-    @action(detail=False, methods=['get'], url_path='payment-status')
-    def payment_status(self, request):
-        """
-        Calcule l'état des paiements pour le locataire connecté
-        en fonction de la date de création du contrat
-        """
-        from datetime import datetime, timedelta
-        from calendar import monthrange
+        return Response({
+            'message': 'Paiement effectué avec succès',
+            'data': PaymentSerializer(payment, context={'request': request}).data
+        }, status=status.HTTP_201_CREATED)
 
-        user = request.user
-
-        # Vérifier que l'utilisateur est un locataire
-        if user.role != 'locataire':
+    @action(detail=True, methods=['post'], url_path='confirm')
+    def confirm_payment(self, request, pk=None):
+        """Confirmer un paiement (propriétaire uniquement)"""
+        if request.user.role != 'proprietaire':
             return Response({
-                'error': 'Cet endpoint est réservé aux locataires'
-            }, status=400)
+                'error': 'Seuls les propriétaires peuvent confirmer les paiements'
+            }, status=status.HTTP_403_FORBIDDEN)
 
-        # Récupérer le tenant associé
-        tenant = Tenant.objects.filter(user=user).first()
-        if not tenant:
+        payment = self.get_object()
+
+        if payment.owner != request.user:
             return Response({
-                'error': 'Aucun profil locataire trouvé'
-            }, status=404)
+                'error': 'Ce paiement ne vous appartient pas'
+            }, status=status.HTTP_403_FORBIDDEN)
 
-        # Récupérer les contrats actifs du locataire
-        contracts = Contract.objects.filter(tenant=tenant, status='active')
+        payment.status = 'completed'
+        payment.owner_notified = True
+        payment.save()
 
-        if not contracts.exists():
-            return Response({
-                'error': 'Aucun contrat actif trouvé',
-                'payment_history': [],
-                'total_paid': 0,
-                'total_due': 0
-            })
-
-        # Pour chaque contrat, générer l'historique des paiements attendus
-        all_payment_data = []
-        total_paid = 0
-        total_due = 0
-
-        # Mapper les mois en français
-        MONTHS_FR = {
-            1: 'Janvier', 2: 'Février', 3: 'Mars', 4: 'Avril',
-            5: 'Mai', 6: 'Juin', 7: 'Juillet', 8: 'Août',
-            9: 'Septembre', 10: 'Octobre', 11: 'Novembre', 12: 'Décembre'
-        }
-
-        for contract in contracts:
-            # Date de début du contrat
-            start_date = contract.start_date
-            # Date actuelle
-            current_date = datetime.now().date()
-
-            # Générer tous les mois depuis le début du contrat jusqu'à maintenant
-            month_date = start_date
-
-            while month_date <= current_date:
-                # Format du mois: "Novembre 2025"
-                month_str = f"{MONTHS_FR[month_date.month]} {month_date.year}"
-                
-                # 🔥 LOG DE DÉBOGAGE
-                print(f"[DEBUG] Génération du mois: {month_str}")
-            
-                # Vérifier si un paiement existe pour ce mois
-                payment = Payment.objects.filter(
-                    tenant=tenant,
-                    property=contract.property,
-                    payment_month=month_str,
-                    status='completed'
-                ).first()
-                
-                # 🔥 LOG DE DÉBOGAGE
-                if payment:
-                    print(f"  ✅ Paiement trouvé: {payment.amount} FCFA")
-                else:
-                    print(f"  ❌ Aucun paiement trouvé")
-            
-                if payment:
-                    # Paiement effectué
-                    payment_data = {
-                        'month': month_str,
-                        'amount': float(payment.amount),
-                        'date': payment.payment_date.strftime('%d/%m/%Y'),
-                        'method': payment.payment_method,
-                        'status': 'paid',
-                        'property': contract.property.titre,
-                        'transaction_ref': payment.transaction_reference
-                    }
-                    total_paid += float(payment.amount)
-                else:
-                    # Paiement non effectué
-                    payment_data = {
-                        'month': month_str,
-                        'amount': float(contract.amount),
-                        'date': None,
-                        'method': None,
-                        'status': 'unpaid',
-                        'property': contract.property.titre,
-                        'transaction_ref': None
-                    }
-                    total_due += float(contract.amount)
-            
-                all_payment_data.append(payment_data)
-            
-                # Passer au mois suivant
-                if month_date.month == 12:
-                    month_date = month_date.replace(year=month_date.year + 1, month=1, day=1)
-                else:
-                    month_date = month_date.replace(month=month_date.month + 1, day=1)
-            
-
-        # Trier par date (du plus récent au plus ancien)
-        # Convertir le mois en format de tri
-        def parse_month_key(payment_data):
-            month_year = payment_data['month']  # Format: "Novembre 2025"
-            parts = month_year.split()
-            month_name = parts[0]
-            year = int(parts[1])
-
-            # Trouver le numéro du mois
-            month_num = next((k for k, v in MONTHS_FR.items() if v == month_name), 1)
-
-            # Retourner une clé de tri (année, mois)
-            return (year, month_num)
-
-        all_payment_data.sort(key=parse_month_key, reverse=True)
-
-        # 🔥 LOGS DE DÉBOGAGE
-        print(f"\n{'='*60}")
-        print(f"[DEBUG] Nombre de paiements générés: {len(all_payment_data)}")
-        print(f"[DEBUG] Premiers paiements:")
-        for p in all_payment_data[:5]:  # Afficher les 5 premiers
-            print(f"  - {p['month']}: {p['amount']} FCFA ({p['status']})")
-        print(f"{'='*60}\n")
-
-        # Calculer les statistiques
-        paid_count = len([p for p in all_payment_data if p['status'] == 'paid'])
-        unpaid_count = len([p for p in all_payment_data if p['status'] == 'unpaid'])
-
-        # Déterminer le statut global
-        if unpaid_count == 0:
-            global_status = 'À jour'
-            status_color = 'green'
-        elif unpaid_count <= 1:
-            global_status = 'Attention'
-            status_color = 'orange'
-        else:
-            global_status = 'En retard'
-            status_color = 'red'
-
-        # Calculer la date du prochain paiement
-        next_payment_date = None
-        days_until_due = None
-        if contracts.exists():
-            contract = contracts.first()
-            # Le prochain paiement est le mois suivant
-            current = datetime.now().date()
-            if current.month == 12:
-                next_month = current.replace(year=current.year + 1, month=1, day=1)
-            else:
-                next_month = current.replace(month=current.month + 1, day=1)
-            next_payment_date = next_month.strftime('%d/%m/%Y')
-            days_until_due = (next_month - current).days
+        # Notifier le locataire
+        Notification.objects.create(
+            user=payment.tenant.user,
+            notification_type='payment',
+            title='Paiement confirmé',
+            message=f'Votre paiement de {payment.amount} FCFA pour {payment.payment_month} a été confirmé.'
+        )
 
         return Response({
-            'payment_history': all_payment_data,
-            'total_paid': total_paid,
-            'total_due': total_due,
-            'paid_count': paid_count,
-            'unpaid_count': unpaid_count,
-            'global_status': global_status,
-            'status_color': status_color,
-            'next_payment_date': next_payment_date,
-            'days_until_due': days_until_due,
-            'contract_info': {
-                'property': contracts.first().property.titre if contracts.exists() else None,
-                'address': contracts.first().property.adresse if contracts.exists() else None,
-                'rent_amount': float(contracts.first().amount) if contracts.exists() else 0
-            }
+            'message': 'Paiement confirmé avec succès',
+            'data': self.get_serializer(payment).data
         })
+
+    @action(detail=True, methods=['post'], url_path='reject')
+    def reject_payment(self, request, pk=None):
+        """Rejeter un paiement (propriétaire uniquement)"""
+        if request.user.role != 'proprietaire':
+            return Response({
+                'error': 'Seuls les propriétaires peuvent rejeter les paiements'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        payment = self.get_object()
+
+        if payment.owner != request.user:
+            return Response({
+                'error': 'Ce paiement ne vous appartient pas'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        reason = request.data.get('reason', 'Aucune raison fournie')
+        
+        payment.status = 'failed'
+        payment.notes = f"Rejeté: {reason}"
+        payment.save()
+
+        # Notifier le locataire
+        Notification.objects.create(
+            user=payment.tenant.user,
+            notification_type='payment',
+            title='Paiement rejeté',
+            message=f'Votre paiement de {payment.amount} FCFA pour {payment.payment_month} a été rejeté. Raison: {reason}'
+        )
+
+        return Response({
+            'message': 'Paiement rejeté',
+            'data': self.get_serializer(payment).data
+        })
+    
 
     @action(detail=False, methods=['get'], url_path='statistics')
     def statistics(self, request):
-        """Retourne les statistiques des paiements"""
-        user = request.user
+        """Statistiques des paiements"""
         queryset = self.get_queryset()
 
-        # Statistiques de base
-        stats = {
-            'total': queryset.count(),
-            'total_amount': queryset.aggregate(Sum('amount'))['amount__sum'] or 0,
-            'by_status': {},
-            'by_method': {},
-            'completed_count': queryset.filter(status='completed').count(),
-            'pending_count': queryset.filter(status='pending').count(),
-        }
-
-        # Par statut
-        for stat in queryset.values('status').annotate(count=Count('id'), total=Sum('amount')):
-            stats['by_status'][stat['status']] = {
-                'count': stat['count'],
-                'total': float(stat['total'] or 0)
+        if request.user.role == 'proprietaire':
+            # Statistiques pour le propriétaire
+            stats = {
+                'total_received': queryset.filter(status='completed').aggregate(
+                    Sum('amount')
+                )['amount__sum'] or 0,
+                'pending_amount': queryset.filter(status='pending').aggregate(
+                    Sum('amount')
+                )['amount__sum'] or 0,
+                'completed_count': queryset.filter(status='completed').count(),
+                'pending_count': queryset.filter(status='pending').count(),
+                'failed_count': queryset.filter(status='failed').count(),
             }
-
-        # Par méthode de paiement
-        for stat in queryset.values('payment_method').annotate(count=Count('id'), total=Sum('amount')):
-            stats['by_method'][stat['payment_method']] = {
-                'count': stat['count'],
-                'total': float(stat['total'] or 0)
+        else:
+            # Statistiques pour le locataire
+            stats = {
+                'total_paid': queryset.filter(status='completed').aggregate(
+                    Sum('amount')
+                )['amount__sum'] or 0,
+                'pending_amount': queryset.filter(status='pending').aggregate(
+                    Sum('amount')
+                )['amount__sum'] or 0,
+                'completed_count': queryset.filter(status='completed').count(),
+                'pending_count': queryset.filter(status='pending').count(),
             }
 
         return Response(stats)
 
-    @action(detail=True, methods=['get'], url_path='receipt')
-    def receipt(self, request, pk=None):
-        """Génère et retourne le reçu de paiement"""
-        payment = self.get_object()
+    @action(detail=False, methods=['get'], url_path='pending')
+    def pending_payments(self, request):
+        """Liste des paiements en attente"""
+        queryset = self.get_queryset().filter(status='pending')
+        serializer = self.get_serializer(queryset, many=True)
+        
+        return Response({
+            'count': queryset.count(),
+            'results': serializer.data
+        })
 
-        if payment.receipt_pdf:
-            # Si un reçu existe déjà, le retourner
-            response = FileResponse(
-                payment.receipt_pdf.open('rb'),
-                content_type='application/pdf'
-            )
-            response['Content-Disposition'] = f'attachment; filename="recu_{payment.id}.pdf"'
-            return response
-        else:
-            # TODO: Générer automatiquement un reçu PDF
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.conf import settings
+
+
+# URL de ton microservice Gemini (ajuste si besoin)
+GEMINI_API_URL = getattr(settings, 'GEMINI_API_URL', 'http://localhost:8002')
+
+
+class JuridicalDocumentViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet complet pour :
+    - Upload de documents
+    - Pose de questions IA
+    - Historique de chat
+    """
+    serializer_class = JuridicalDocumentSerializer
+    parser_classes = (MultiPartParser, FormParser, JSONParser)  # <-- ADD THIS LINE
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """Seuls les documents de l'utilisateur connecté"""
+        return JuridicalDocument.objects.filter(user=self.request.user).order_by('-uploaded_at')
+
+    def perform_create(self, serializer):
+        """Lie le document à l'utilisateur"""
+        serializer.save(user=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        """Upload + réponse immédiate"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        document = serializer.save(user=request.user)
+
+        # Optionnel : lancer un traitement asynchrone ici
+        # process_document.delay(document.id)
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    # ===============================================
+    # ACTION 1 : Récupérer l'historique du chat
+    # ===============================================
+    @action(detail=True, methods=['get'], url_path='chat_history')
+    def chat_history(self, request, pk=None):
+        """
+        GET /api/juridical-documents/{id}/chat_history/
+        Retourne tous les messages (user + IA)
+        """
+        document = self.get_object()
+        messages = document.chat_messages.all().order_by('created_at')
+        serializer = JuridicalChatMessageSerializer(messages, many=True)
+        return Response(serializer.data)
+
+    # ===============================================
+    # ACTION 2 : Poser une question à l'IA
+    # ===============================================
+    @action(detail=True, methods=['post'], url_path='ask_question')
+    def ask_question(self, request, pk=None):
+        """
+        POST /api/juridical-documents/{id}/ask_question/
+        Body: { "question": "de quoi parle le document" }
+        """
+        document = self.get_object()
+
+        # 1. Vérifier que le document est prêt
+        if not document.is_processed:
             return Response({
-                'message': 'Reçu non disponible pour ce paiement'
-            }, status=status.HTTP_404_NOT_FOUND)
+                "error": "Le document n'est pas encore analysé. Veuillez patienter."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 2. Récupérer et valider la question
+        question = request.data.get('question', '').strip()
+        if not question:
+            return Response({
+                "error": "La question est requise."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 3. Sauvegarder le message utilisateur
+        user_message = JuridicalChatMessage.objects.create(
+            document=document,
+            user=request.user,
+            message_type='user',
+            content=question
+        )
+
+        try:
+            # === ÉTAPE 1 : Upload du PDF vers Gemini API ===
+            document.file.seek(0)  # Important !
+            files = {
+                'file': (document.name, document.file, 'application/pdf')
+            }
+            upload_response = requests.post(
+                f"{GEMINI_API_URL}/upload-pdf/",
+                files=files,
+                timeout=30
+            )
+
+            if upload_response.status_code != 200:
+                error = f"Upload échoué: {upload_response.text}"
+                self._save_error_message(document, request.user, error)
+                return Response({"error": error}, status=500)
+
+            # === ÉTAPE 2 : Poser la question ===
+            payload = {
+                'question': question,
+                'max_tokens': request.data.get('max_tokens', 1024),
+                'model_name': request.data.get('model_name', 'models/gemini-2.0-flash-exp')
+            }
+
+            ask_response = requests.post(
+                f"{GEMINI_API_URL}/ask/",
+                json=payload,
+                timeout=60
+            )
+
+            if ask_response.status_code == 200:
+                result = ask_response.json()
+                answer = result.get('answer', 'Aucune réponse.')
+                model = result.get('model', 'inconnu')
+
+                # Sauvegarder la réponse IA
+                ai_message = JuridicalChatMessage.objects.create(
+                    document=document,
+                    user=request.user,
+                    message_type='ai',
+                    content=answer
+                )
+
+                return Response({
+                    "user_message": JuridicalChatMessageSerializer(user_message).data,
+                    "ai_message": JuridicalChatMessageSerializer(ai_message).data,
+                    "answer": answer,
+                    "model": model
+                })
+
+            else:
+                error = f"Gemini API erreur {ask_response.status_code}: {ask_response.text}"
+                self._save_error_message(document, request.user, error)
+                return Response({"error": error}, status=500)
+
+        except requests.exceptions.Timeout:
+            error = "Délai d'attente dépassé (timeout)"
+            self._save_error_message(document, request.user, error)
+            return Response({"error": error}, status=504)
+
+        except Exception as e:
+            error = f"Erreur interne: {str(e)}"
+            logger.error(f"ask_question error (doc {document.id}): {e}")
+            self._save_error_message(document, request.user, error)
+            return Response({"error": error}, status=500)
+        
+        # ============================================
+# AJOUTER CETTE ACTION DANS JuridicalDocumentViewSet
+# ============================================
+
+    @action(detail=False, methods=['post'], url_path='upload-multiple')
+    def upload_multiple(self, request):
+        """
+        Upload multiple de documents juridiques
+        Les documents sont directement marqués comme traités
+        """
+        files = request.FILES.getlist('files')
+        
+        if not files:
+            return Response(
+                {'error': 'Aucun fichier fourni'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        created_documents = []
+        errors = []
+        
+        for index, file in enumerate(files):
+            try:
+                print(f'📤 Upload {index + 1}/{len(files)}: {file.name}')
+                
+                # Vérifier que c'est un PDF
+                if not file.name.lower().endswith('.pdf'):
+                    errors.append({
+                        'file': file.name,
+                        'error': 'Type de fichier invalide (PDF uniquement)'
+                    })
+                    continue
+                
+                # Vérifier la taille (max 10MB)
+                if file.size > 10 * 1024 * 1024:
+                    errors.append({
+                        'file': file.name,
+                        'error': 'Fichier trop volumineux (max 10MB)'
+                    })
+                    continue
+                
+                # Calculer la taille formatée
+                if file.size < 1024:
+                    file_size = f"{file.size} B"
+                elif file.size < 1024 * 1024:
+                    file_size = f"{file.size / 1024:.1f} KB"
+                else:
+                    file_size = f"{file.size / (1024 * 1024):.1f} MB"
+                
+                # ✅ CORRECTION : Créer le document déjà "traité"
+                document = JuridicalDocument.objects.create(
+                    user=request.user,
+                    name=file.name,
+                    file=file,
+                    file_type='PDF',
+                    file_size=file_size,
+                    status='completed',      # ✅ Directement "Traité"
+                    is_processed=True        # ✅ Marqué comme traité
+                )
+                
+                created_documents.append(document)
+                print(f'✅ Document {index + 1} créé et traité: {document.name}')
+                
+            except Exception as e:
+                print(f'💥 Erreur upload {file.name if file else "unknown"}: {e}')
+                errors.append({
+                    'file': file.name if file else 'unknown',
+                    'error': str(e)
+                })
+        
+        # Sérialiser les documents créés
+        serializer = JuridicalDocumentSerializer(
+            created_documents,
+            many=True,
+            context={'request': request}
+        )
+        
+        response_status = status.HTTP_201_CREATED if created_documents else status.HTTP_400_BAD_REQUEST
+        
+        return Response({
+            'message': f'{len(created_documents)} document(s) uploadé(s) avec succès',
+            'data': serializer.data,
+            'errors': errors,
+            'total_uploaded': len(created_documents),
+            'total_errors': len(errors)
+        }, status=response_status)
+
+class PrestataireViewSet(viewsets.ModelViewSet):
+    """ViewSet pour gérer les prestataires"""
+    
+    serializer_class = PrestataireSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'contact', 'zone', 'email']
+    ordering_fields = ['created_at', 'nom', 'note']
+    ordering = ['-created_at']
+    
+    def get_queryset(self):
+        """Filtre les prestataires selon l'utilisateur"""
+        user = self.request.user
+        
+        if user.role == 'proprietaire':
+            # Le propriétaire voit ses prestataires
+            queryset = Prestataire.objects.filter(owner=user)
+        else:
+            # Les autres utilisateurs ne voient aucun prestataire
+            queryset = Prestataire.objects.none()
+        
+        # Filtrage par disponibilité
+        disponibilite = self.request.query_params.get('disponibilite', None)
+        if disponibilite:
+            queryset = queryset.filter(disponibilite=disponibilite)
+        
+        # Filtrage par spécialité
+        specialite = self.request.query_params.get('specialite', None)
+        if specialite:
+            queryset = queryset.filter(specialites__contains=[specialite])
+        
+        # Filtrage par zone
+        zone = self.request.query_params.get('zone', None)
+        if zone:
+            queryset = queryset.filter(zone__icontains=zone)
+        
+        return queryset
+    
+    def get_serializer_class(self):
+        """Retourne le serializer approprié selon l'action"""
+        if self.action == 'list':
+            return PrestataireListSerializer
+        elif self.action == 'create':
+            return PrestataireCreateSerializer
+        return PrestataireSerializer
+    
+    def perform_create(self, serializer):
+        """Affecter automatiquement le propriétaire lors de la création"""
+        if self.request.user.role != 'proprietaire':
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Seuls les propriétaires peuvent ajouter des prestataires")
+        
+        serializer.save(owner=self.request.user)
+    
+    def create(self, request, *args, **kwargs):
+        """Crée un nouveau prestataire avec debug"""
+        import json
+        
+        # 🔍 LOG 1 : Afficher les données reçues
+        print("=" * 80)
+        print("📥 DONNÉES REÇUES:")
+        print(json.dumps(request.data, indent=2, ensure_ascii=False))
+        print("=" * 80)
+        
+        serializer = self.get_serializer(data=request.data)
+        
+        # 🔍 LOG 2 : Vérifier la validation
+        if not serializer.is_valid():
+            print("❌ ERREURS DE VALIDATION:")
+            print(json.dumps(serializer.errors, indent=2, ensure_ascii=False))
+            print("=" * 80)
+            return Response(
+                {
+                    'error': 'Erreur de validation',
+                    'details': serializer.errors
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 🔍 LOG 3 : Données validées
+        print("✅ DONNÉES VALIDÉES:")
+        print(json.dumps(serializer.validated_data, indent=2, ensure_ascii=False, default=str))
+        print("=" * 80)
+        
+        try:
+            # ✅ CORRECTION : Créer d'abord l'objet, puis le récupérer
+            self.perform_create(serializer)
+            
+            # Récupérer l'instance créée depuis le serializer
+            prestataire_instance = serializer.instance
+            
+            # Sérialiser avec le serializer complet
+            response_serializer = PrestataireSerializer(
+                prestataire_instance,
+                context={'request': request}
+            )
+            
+            headers = self.get_success_headers(serializer.data)
+            return Response(
+                {
+                    'message': 'Prestataire ajouté avec succès',
+                    'data': response_serializer.data
+                },
+                status=status.HTTP_201_CREATED,
+                headers=headers
+            )
+        except Exception as e:
+            print(f"💥 ERREUR LORS DE LA CRÉATION: {e}")
+            print(f"Type d'erreur: {type(e)}")
+            import traceback
+            traceback.print_exc()
+            print("=" * 80)
+            
+            return Response(
+                {
+                    'error': 'Erreur lors de la création',
+                    'details': str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        # 🔍 LOG 3 : Données validées
+        print("✅ DONNÉES VALIDÉES:")
+        print(json.dumps(serializer.validated_data, indent=2, ensure_ascii=False, default=str))
+        print("=" * 80)
+        
+        try:
+            self.perform_create(serializer)
+            
+            headers = self.get_success_headers(serializer.data)
+            return Response(
+                {
+                    'message': 'Prestataire ajouté avec succès',
+                    'data': PrestataireSerializer(
+                        Prestataire.objects.get(id=serializer.data['id']),
+                        context={'request': request}
+                    ).data
+                },
+                status=status.HTTP_201_CREATED,
+                headers=headers
+            )
+        except Exception as e:
+            print(f"💥 ERREUR LORS DE LA CRÉATION: {e}")
+            print(f"Type d'erreur: {type(e)}")
+            import traceback
+            traceback.print_exc()
+            print("=" * 80)
+            
+            return Response(
+                {
+                    'error': 'Erreur lors de la création',
+                    'details': str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def update(self, request, *args, **kwargs):
+        """Met à jour un prestataire"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        
+        # Vérifier que le propriétaire est bien le propriétaire du prestataire
+        if instance.owner != request.user:
+            return Response(
+                {'error': 'Vous ne pouvez modifier que vos propres prestataires'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        return Response({
+            'message': 'Prestataire mis à jour avec succès',
+            'data': serializer.data
+        })
+    
+    def destroy(self, request, *args, **kwargs):
+        """Supprime un prestataire"""
+        instance = self.get_object()
+        
+        # Vérifier que le propriétaire est bien le propriétaire du prestataire
+        if instance.owner != request.user:
+            return Response(
+                {'error': 'Vous ne pouvez supprimer que vos propres prestataires'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        nom = instance.nom
+        self.perform_destroy(instance)
+        
+        return Response(
+            {'message': f'Le prestataire "{nom}" a été supprimé avec succès'},
+            status=status.HTTP_200_OK
+        )
+    
+    @action(detail=False, methods=['get'], url_path='statistics')
+    def statistics(self, request):
+        """Retourne les statistiques des prestataires"""
+        user = request.user
+        
+        if user.role != 'proprietaire':
+            return Response(
+                {'error': 'Seuls les propriétaires peuvent accéder aux statistiques'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        queryset = self.get_queryset()
+        
+        # Comptage par spécialité
+        specialites_count = {}
+        for prestataire in queryset:
+            for specialite in prestataire.specialites:
+                specialites_count[specialite] = specialites_count.get(specialite, 0) + 1
+        
+        stats = {
+            'total': queryset.count(),
+            'disponibles': queryset.filter(disponibilite='Disponible').count(),
+            'occupes': queryset.filter(disponibilite='Occupé').count(),
+            'note_moyenne': queryset.aggregate(models.Avg('note'))['note__avg'] or 0,
+            'par_specialite': specialites_count
+        }
+        
+        return Response(stats)
+    
+    @action(detail=False, methods=['get'], url_path='disponibles')
+    def disponibles(self, request):
+        """Retourne uniquement les prestataires disponibles"""
+        queryset = self.get_queryset().filter(disponibilite='Disponible')
+        serializer = self.get_serializer(queryset, many=True)
+        
+        return Response({
+            'count': queryset.count(),
+            'results': serializer.data
+        })
+    
+    @action(detail=False, methods=['get'], url_path='by-specialite')
+    def by_specialite(self, request):
+        """Filtre les prestataires par spécialité"""
+        specialite = request.query_params.get('specialite', None)
+        
+        if not specialite:
+            return Response(
+                {'error': 'Le paramètre "specialite" est requis'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        queryset = self.get_queryset().filter(specialites__contains=[specialite])
+        serializer = self.get_serializer(queryset, many=True)
+        
+        return Response({
+            'specialite': specialite,
+            'count': queryset.count(),
+            'results': serializer.data
+        })
+    
+    @action(detail=True, methods=['patch'], url_path='toggle-disponibilite')
+    def toggle_disponibilite(self, request, pk=None):
+        """Change la disponibilité d'un prestataire"""
+        prestataire = self.get_object()
+        
+        # Vérifier les permissions
+        if prestataire.owner != request.user:
+            return Response(
+                {'error': 'Vous ne pouvez modifier que vos propres prestataires'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Toggle de la disponibilité
+        if prestataire.disponibilite == 'Disponible':
+            prestataire.disponibilite = 'Occupé'
+        else:
+            prestataire.disponibilite = 'Disponible'
+        
+        prestataire.save()
+        
+        serializer = self.get_serializer(prestataire)
+        return Response({
+            'message': f'Disponibilité mise à jour: {prestataire.disponibilite}',
+            'data': serializer.data
+        })
+    
+class MaintenanceRequestViewSet(viewsets.ModelViewSet):
+    """ViewSet pour gérer les demandes de maintenance"""
+
+    serializer_class = MaintenanceRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'priority', 'request_type']
+    search_fields = ['request_id', 'description', 'tenant__full_name']
+    ordering_fields = ['created_at', 'priority', 'status']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        """Filtre les demandes selon le rôle de l'utilisateur - VERSION CORRIGÉE"""
+        user = self.request.user
+        
+        # Logs simplifiés avec logging
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        if not user.is_authenticated:
+            logger.warning("⚠️ Utilisateur non authentifié tentant d'accéder aux demandes")
+            return MaintenanceRequest.objects.none()
+        
+        if user.role == 'proprietaire':
+            # 🔧 CORRECTION : Utiliser select_related pour optimiser les requêtes
+            queryset = MaintenanceRequest.objects.filter(
+                linked_property__owner=user
+            ).select_related(
+                'tenant', 
+                'tenant__user',
+                'linked_property', 
+                'linked_property__owner'
+            ).prefetch_related(
+                'tenant__user'
+            ).order_by('-created_at')
+            
+            # Logs en mode DEBUG
+            logger.debug(f"🏠 Propriétaire {user.email} - {queryset.count()} demande(s)")
+            
+            # 🔍 Diagnostic si aucune demande
+            if queryset.count() == 0:
+                props_count = Property.objects.filter(owner=user).count()
+                logger.info(f"📊 Propriétés du propriétaire: {props_count}")
+                
+                # Vérifier s'il y a des demandes sans filtre
+                all_requests = MaintenanceRequest.objects.all().count()
+                logger.info(f"📊 Total demandes dans la DB: {all_requests}")
+            
+            return queryset
+        
+        elif user.role == 'locataire':
+            # Récupérer le profil Tenant
+            tenant = Tenant.objects.filter(user=user).select_related('user').first()
+            
+            if not tenant:
+                logger.warning(f"⚠️ Aucun profil Tenant trouvé pour {user.email}")
+                return MaintenanceRequest.objects.none()
+            
+            queryset = MaintenanceRequest.objects.filter(
+                tenant=tenant
+            ).select_related(
+                'tenant',
+                'tenant__user',
+                'linked_property',
+                'linked_property__owner'
+            ).order_by('-created_at')
+            
+            logger.debug(f"👤 Locataire {tenant.full_name} - {queryset.count()} demande(s)")
+            return queryset
+        
+        logger.error(f"⚠️ Rôle invalide ou non reconnu: {user.role}")
+        return MaintenanceRequest.objects.none()
+
+    def get_serializer_class(self):
+        """Retourne le serializer approprié selon l'action"""
+        if self.action == 'create':
+            return MaintenanceRequestCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return MaintenanceRequestUpdateSerializer
+        return MaintenanceRequestSerializer
+
+    def create(self, request, *args, **kwargs):
+        """Crée une nouvelle demande de maintenance (locataire uniquement)"""
+        if request.user.role != 'locataire':
+            return Response(
+                {'error': 'Seuls les locataires peuvent créer des demandes de maintenance'},
+                status=status.HTTP_403_FORBIDDEN
+            )  # ✅ Enlevé le point
+
+        # Vérifier que le locataire a un profil Tenant
+        tenant = Tenant.objects.filter(user=request.user).first()
+        if not tenant:
+            return Response(
+                {'error': 'Vous devez avoir un profil locataire pour créer une demande'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Créer la demande avec le tenant automatique
+        maintenance_request = serializer.save(tenant=tenant)
+
+        # Créer une notification pour le propriétaire
+        Notification.objects.create(
+            user=maintenance_request.linked_property.owner,
+            notification_type='maintenance',
+            title='Nouvelle demande de maintenance',
+            message=f'{tenant.full_name} a créé une demande de maintenance ({maintenance_request.request_type}) pour {maintenance_request.linked_property.titre}'
+        )
+
+        headers = self.get_success_headers(serializer.data)
+        return Response(
+            {
+                'message': 'Demande de maintenance créée avec succès',
+                'data': MaintenanceRequestSerializer(
+                    maintenance_request,
+                    context={'request': request}
+                ).data
+            },
+            status=status.HTTP_201_CREATED,
+            headers=headers
+        )
+
+    def update(self, request, *args, **kwargs):
+        """Met à jour une demande de maintenance"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+
+        # Vérifier les permissions selon le rôle
+        if request.user.role == 'proprietaire':
+            # Le propriétaire peut modifier les demandes pour ses propriétés
+            if instance.linked_property.owner != request.user:
+                return Response(
+                    {'error': 'Vous ne pouvez modifier que les demandes pour vos propriétés'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        elif request.user.role == 'locataire':
+            # Le locataire peut modifier uniquement ses propres demandes
+            tenant = Tenant.objects.filter(user=request.user).first()
+            if not tenant or instance.tenant != tenant:
+                return Response(
+                    {'error': 'Vous ne pouvez modifier que vos propres demandes'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            # Le locataire ne peut modifier que certains champs
+            allowed_fields = {'description', 'priority'}
+            if not set(request.data.keys()).issubset(allowed_fields):
+                return Response(
+                    {'error': 'Vous ne pouvez modifier que la description et la priorité'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        else:
+            return Response(
+                {'error': 'Vous n\'avez pas la permission de modifier cette demande'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        # Retourner les données complètes
+        response_serializer = MaintenanceRequestSerializer(instance, context={'request': request})
+
+        return Response({
+            'message': 'Demande de maintenance mise à jour avec succès',
+            'data': response_serializer.data
+        })
+
+    def destroy(self, request, *args, **kwargs):
+        """Supprime une demande de maintenance"""
+        instance = self.get_object()
+
+        # Vérifier les permissions
+        if request.user.role == 'proprietaire':
+            if instance.linked_property.owner != request.user:
+                return Response(
+                    {'error': 'Vous ne pouvez supprimer que les demandes pour vos propriétés'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        elif request.user.role == 'locataire':
+            tenant = Tenant.objects.filter(user=request.user).first()
+            if not tenant or instance.tenant != tenant:
+                return Response(
+                    {'error': 'Vous ne pouvez supprimer que vos propres demandes'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            # Le locataire ne peut supprimer que les demandes en attente
+            if instance.status != 'pending':
+                return Response(
+                    {'error': 'Vous ne pouvez supprimer que les demandes en attente'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        else:
+            return Response(
+                {'error': 'Vous n\'avez pas la permission de supprimer cette demande'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        request_id = instance.request_id
+        self.perform_destroy(instance)
+        
+        return Response(
+            {'message': f'La demande {request_id} a été supprimée avec succès'},
+            status=status.HTTP_200_OK
+        )
+
+    # ============================================
+    # ACTIONS PERSONNALISÉES
+    # ============================================
+
+    @action(detail=False, methods=['get'], url_path='pending')
+    def pending_requests(self, request):
+        """Retourne uniquement les demandes en attente"""
+        queryset = self.get_queryset().filter(status='pending')
+        serializer = self.get_serializer(queryset, many=True)
+        
+        return Response({
+            'count': queryset.count(),
+            'results': serializer.data
+        })
+
+    @action(detail=False, methods=['get'], url_path='urgent')
+    def urgent_requests(self, request):
+        """Retourne les demandes urgentes"""
+        queryset = self.get_queryset().filter(
+            priority='urgent',
+            status__in=['pending', 'in_progress']
+        )
+        serializer = self.get_serializer(queryset, many=True)
+        
+        return Response({
+            'count': queryset.count(),
+            'results': serializer.data
+        })
+
+    @action(detail=True, methods=['post'], url_path='start-work')
+    def start_work(self, request, pk=None):
+        """Marque une demande comme en cours (propriétaire uniquement)"""
+        if request.user.role != 'proprietaire':
+            return Response(
+                {'error': 'Seuls les propriétaires peuvent démarrer le travail'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        instance = self.get_object()
+
+        if instance.linked_property.owner != request.user:
+            return Response(
+                {'error': 'Vous ne pouvez modifier que les demandes pour vos propriétés'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if instance.status != 'pending':
+            return Response(
+                {'error': 'Cette demande n\'est pas en attente'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Mise à jour du statut et du prestataire si fourni
+        instance.status = 'in_progress'
+        provider = request.data.get('provider')
+        if provider:
+            instance.provider = provider
+        instance.save()
+
+        # Notifier le locataire
+        Notification.objects.create(
+            user=instance.tenant.user,
+            notification_type='maintenance',
+            title='Demande en cours de traitement',
+            message=f'Votre demande de maintenance ({instance.request_type}) est maintenant en cours de traitement.'
+        )
+
+        serializer = self.get_serializer(instance)
+        return Response({
+            'message': 'Demande marquée comme en cours',
+            'data': serializer.data
+        })
+
+    @action(detail=True, methods=['post'], url_path='resolve')
+    def resolve_request(self, request, pk=None):
+        """Marque une demande comme résolue (propriétaire uniquement)"""
+        if request.user.role != 'proprietaire':
+            return Response(
+                {'error': 'Seuls les propriétaires peuvent résoudre les demandes'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        instance = self.get_object()
+
+        if instance.linked_property.owner != request.user:
+            return Response(
+                {'error': 'Vous ne pouvez modifier que les demandes pour vos propriétés'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if instance.status not in ['pending', 'in_progress']:
+            return Response(
+                {'error': 'Cette demande ne peut pas être résolue'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        instance.status = 'resolved'
+        instance.save()
+
+        # Notifier le locataire
+        Notification.objects.create(
+            user=instance.tenant.user,
+            notification_type='maintenance',
+            title='Demande résolue',
+            message=f'Votre demande de maintenance ({instance.request_type}) a été résolue.'
+        )
+
+        serializer = self.get_serializer(instance)
+        return Response({
+            'message': 'Demande marquée comme résolue',
+            'data': serializer.data
+        })
+
+    @action(detail=True, methods=['post'], url_path='reject')
+    def reject_request(self, request, pk=None):
+        """Rejette une demande (propriétaire uniquement)"""
+        if request.user.role != 'proprietaire':
+            return Response(
+                {'error': 'Seuls les propriétaires peuvent rejeter les demandes'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        instance = self.get_object()
+
+        if instance.linked_property.owner != request.user:
+            return Response(
+                {'error': 'Vous ne pouvez modifier que les demandes pour vos propriétés'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if instance.status != 'pending':
+            return Response(
+                {'error': 'Seules les demandes en attente peuvent être rejetées'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        reason = request.data.get('reason', 'Aucune raison fournie')
+        instance.status = 'rejected'
+        instance.save()
+
+        # Notifier le locataire
+        Notification.objects.create(
+            user=instance.tenant.user,
+            notification_type='maintenance',
+            title='Demande rejetée',
+            message=f'Votre demande de maintenance ({instance.request_type}) a été rejetée. Raison: {reason}'
+        )
+
+        serializer = self.get_serializer(instance)
+        return Response({
+            'message': 'Demande rejetée',
+            'data': serializer.data
+        })
+
+    @action(detail=True, methods=['post'], url_path='assign-provider')
+    def assign_provider(self, request, pk=None):
+        """Assigne un prestataire à une demande (propriétaire uniquement)"""
+        if request.user.role != 'proprietaire':
+            return Response(
+                {'error': 'Seuls les propriétaires peuvent assigner des prestataires'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        instance = self.get_object()
+
+        if instance.linked_property.owner != request.user:
+            return Response(
+                {'error': 'Vous ne pouvez modifier que les demandes pour vos propriétés'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        provider = request.data.get('provider')
+        if not provider:
+            return Response(
+                {'error': 'Le nom du prestataire est requis'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        instance.provider = provider
+        if instance.status == 'pending':
+            instance.status = 'in_progress'
+        instance.save()
+
+        serializer = self.get_serializer(instance)
+        return Response({
+            'message': f'Prestataire "{provider}" assigné avec succès',
+            'data': serializer.data
+        })
+
+    @action(detail=False, methods=['get'], url_path='by-property/(?P<property_id>[^/.]+)')
+    def by_property(self, request, property_id=None):
+        """Retourne les demandes pour une propriété spécifique"""
+        queryset = self.get_queryset().filter(linked_property_id=property_id)
+        serializer = self.get_serializer(queryset, many=True)
+        
+        return Response({
+            'count': queryset.count(),
+            'results': serializer.data
+        })
+
+    @action(detail=False, methods=['get'], url_path='statistics')
+    def statistics(self, request):
+        """Retourne les statistiques des demandes de maintenance"""
+        user = request.user
+        queryset = self.get_queryset()
+
+        stats = {
+            'total': queryset.count(),
+            'pending': queryset.filter(status='pending').count(),
+            'in_progress': queryset.filter(status='in_progress').count(),
+            'resolved': queryset.filter(status='resolved').count(),
+            'rejected': queryset.filter(status='rejected').count(),
+            'urgent': queryset.filter(priority='urgent').count(),
+            'by_type': {},
+            'by_location': {}
+        }
+
+        # Statistiques par type
+        for request_type in queryset.values('request_type').distinct():
+            type_val = request_type['request_type']
+            stats['by_type'][type_val] = queryset.filter(request_type=type_val).count()
+
+        # Statistiques par emplacement
+        for location in queryset.values('location').distinct():
+            loc_val = location['location']
+            stats['by_location'][loc_val] = queryset.filter(location=loc_val).count()
+
+        return Response(stats)
+
+    @action(detail=False, methods=['get'], url_path='by-status/(?P<status_name>[^/.]+)')
+    def by_status(self, request, status_name=None):
+        """Retourne les demandes filtrées par statut"""
+        valid_statuses = ['pending', 'in_progress', 'resolved', 'rejected']
+        
+        if status_name not in valid_statuses:
+            return Response(
+                {'error': f'Statut invalide. Valeurs autorisées: {", ".join(valid_statuses)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        queryset = self.get_queryset().filter(status=status_name)
+        serializer = self.get_serializer(queryset, many=True)
+        
+        return Response({
+            'status': status_name,
+            'count': queryset.count(),
+            'results': serializer.data
+        })

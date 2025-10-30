@@ -1,509 +1,627 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Download } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import PaymentModal from "../ActionsRapides/PaymentModal";
+"use client";
+import React, { useState, useEffect } from 'react';
+import { CreditCard, CheckCircle, Clock, AlertCircle, Plus, Eye, X, Calendar, DollarSign } from 'lucide-react';
 import axios from 'axios';
 
-const API_BASE_URL = 'http://127.0.0.1:8000/api';
+const API_BASE_URL = 'http://localhost:8000/api';
 
-export default function PaiementsLocataire() {
-  const [isVisible, setIsVisible] = useState(false);
-  const [selectedStatus, setSelectedStatus] = useState('all');
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [paymentData, setPaymentData] = useState(null);
-  const [paymentsList, setPaymentsList] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  // Format devise
-  const formatCurrency = (amount) => {
-    try {
-      return new Intl.NumberFormat('fr-FR', {
-        style: 'currency',
-        currency: 'XOF',
-        minimumFractionDigits: 0
-      }).format(amount || 0);
-    } catch {
-      return `${amount || 0} FCFA`;
-    }
-  };
-
-  useEffect(() => {
-    setTimeout(() => setIsVisible(true), 100);
-    loadPaymentStatus();
-    loadPaymentsList();
-  }, []);
-
-const loadPaymentStatus = async () => {
-  try {
-    setLoading(true);
-    const token = localStorage.getItem('token');
-    const resp = await axios.get(`${API_BASE_URL}/payments/payment-status/`, {
-      headers: { Authorization: `Token ${token}` }
+export default function TenantPaiements() {
+    const [isVisible, setIsVisible] = useState(false);
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [showDetailsModal, setShowDetailsModal] = useState(false);
+    const [selectedPayment, setSelectedPayment] = useState(null);
+    const [contracts, setContracts] = useState([]);
+    const [payments, setPayments] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [stats, setStats] = useState({
+        total_paid: 0,
+        pending_amount: 0,
+        completed_count: 0,
+        pending_count: 0
     });
-    setPaymentData(resp.data || null);
-    
-    // 🔥 LOGS DE DÉBOGAGE
-    console.log('📊 API Response complète:', resp.data);
-    console.log('📅 payment_history:', resp.data?.payment_history);
-    
-  } catch (e) {
-    console.error('Erreur lors du chargement des paiements:', e);
-  } finally {
-    setLoading(false);
-  }
-};
 
-  const loadPaymentsList = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const resp = await axios.get(`${API_BASE_URL}/payments/`, {
-        headers: { Authorization: `Token ${token}` }
-      });
-      const rows = Array.isArray(resp.data?.results) ? resp.data.results
-                  : (Array.isArray(resp.data) ? resp.data : []);
-      setPaymentsList(rows);
-      // console.log('payments list', rows);
-    } catch (e) {
-      console.error('Erreur liste paiements:', e);
-    }
-  };
+    useEffect(() => {
+        setTimeout(() => setIsVisible(true), 100);
+        loadContracts();
+        loadPayments();
+        loadStats();
+    }, []);
 
-  // Données agrégées pour cartes/alertes
-  const paymentHistory = useMemo(() => {
-    const list = paymentData?.payment_history || [];
-    return list.map((p, idx) => ({
-      id: p.id || idx,
-      month: p.month,                 // "Novembre 2025"
-      amount: Number(p.amount || 0),
-      date: p.date || null,           // "04/10/2025" ou null
-      method: p.method || '-',        // "Orange Money" etc.
-      status: p.status === 'paid' ? 'paid' : 'unpaid',
-      property: p.property || '',
-      transaction_ref: p.transaction_ref || null
-    }));
-  }, [paymentData]);
-
-  // Graphe robuste 12 mois
-  const monthLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-
-const chartData = useMemo(() => {
-  const hist = Array.isArray(paymentHistory) ? paymentHistory : [];
-  
-  console.log('🔍 paymentHistory dans chartData:', hist);
-  
-  if (hist.length === 0) {
-    console.log('⚠️ Aucune donnée dans paymentHistory');
-    return monthLabels.map(m => ({ month: m, amount: 0 }));
-  }
-  
-  // Mapping robuste des mois français complets → abréviations
-  const monthMapping = {
-    'Janvier': 'Jan',
-    'Février': 'Fév',
-    'Mars': 'Mar',
-    'Avril': 'Avr',
-    'Mai': 'Mai',
-    'Juin': 'Jun',
-    'Juillet': 'Jul',
-    'Août': 'Aoû',
-    'Septembre': 'Sep',
-    'Octobre': 'Oct',
-    'Novembre': 'Nov',
-    'Décembre': 'Déc'
-  };
-  
-  const byMonth = {};
-  
-  hist.forEach(p => {
-    const monthStr = p.month || '';
-    console.log(`📌 Traitement de: "${monthStr}"`);
-    
-    // Extraire le nom du mois (ex: "Novembre 2025" → "Novembre")
-    const monthName = monthStr.split(' ')[0];
-    
-    // Convertir en abréviation
-    const label = monthMapping[monthName] || monthStr.slice(0, 3);
-    
-    console.log(`   → Mois extrait: "${monthName}" → Label final: "${label}"`);
-    
-    byMonth[label] = (byMonth[label] || 0) + (p.amount || 0);
-  });
-  
-  console.log('💰 Données agrégées par mois:', byMonth);
-  
-  const result = monthLabels.map(m => ({ 
-    month: m, 
-    amount: byMonth[m] || 0 
-  }));
-  
-  console.log('📈 chartData final envoyé au graphique:', result);
-  
-  return result;
-}, [paymentHistory]);
-  const totalPaid = useMemo(() => Number(paymentData?.total_paid || 0), [paymentData]);
-  const totalDue = useMemo(() => Number(paymentData?.total_due || 0), [paymentData]);
-  const collectionRate = useMemo(() => {
-    const paid = Number(paymentData?.paid_count || 0);
-    const total = Number((paymentData?.paid_count || 0) + (paymentData?.unpaid_count || 0));
-    if (!total) return '0%';
-    return `${Math.round((paid / total) * 100)}%`;
-  }, [paymentData]);
-
-  const tenantSummary = useMemo(() => {
-    const c = paymentData?.contract_info || {};
-    return {
-      property: c.property || '—',
-      address: c.address || '—',
-      rentAmount: Number(c.rent_amount || 0),
-      nextPaymentDate: paymentData?.next_payment_date || '—',
-      paymentStatus: paymentData?.global_status || '—',
-      totalDue: totalDue,
-      daysUntilDue: paymentData?.days_until_due ?? '—'
+    const getAuthHeaders = () => {
+        const token = localStorage.getItem('token');
+        return {
+            'Authorization': `Token ${token}`,
+            'Content-Type': 'application/json'
+        };
     };
-  }, [paymentData, totalDue]);
 
-  // Liste réelle pour le tableau "Paiements récents"
-  const filteredPayments = useMemo(() => {
-    const rows = (paymentsList || []).map(p => ({
-      id: p.id,
-      month: p.payment_month, // ex: "Novembre 2025" (CharField)
-      amount: Number(p.amount || 0),
-      date: p.payment_date ? new Date(p.payment_date).toLocaleDateString('fr-FR') : '—',
-      method: p.payment_method || '—',
-      status: p.status === 'completed' ? 'paid' : 'unpaid',
-    }));
-    if (selectedStatus === 'all') return rows;
-    return rows.filter(r => (selectedStatus === 'paid' ? r.status === 'paid' : r.status === 'unpaid'));
-  }, [paymentsList, selectedStatus]);
+    const loadContracts = async () => {
+        try {
+            const response = await axios.get(`${API_BASE_URL}/contracts/`, {
+                headers: getAuthHeaders()
+            });
+            
+            // ✅ Vérifier si la réponse est un tableau ou un objet avec 'results'
+            const data = Array.isArray(response.data) ? response.data : response.data.results || [];
+            console.log('Contracts loaded:', data);
+            setContracts(data);
+        } catch (error) {
+            console.error('Erreur lors du chargement des contrats:', error);
+            setContracts([]);
+        }
+    };
 
-  const handleDownloadReceipt = (paymentId) => {
-    if (!paymentId) return;
-    window.open(`${API_BASE_URL}/payments/${paymentId}/receipt/`, '_blank', 'noopener,noreferrer');
-  };
+    const loadPayments = async () => {
+        setLoading(true);
+        try {
+            const response = await axios.get(`${API_BASE_URL}/payments/`, {
+                headers: getAuthHeaders()
+            });
+            
+            // ✅ Vérifier si la réponse est un tableau ou un objet avec 'results'
+            const data = Array.isArray(response.data) ? response.data : response.data.results || [];
+            console.log('Payments loaded:', data);
+            setPayments(data);
+        } catch (error) {
+            console.error('Erreur lors du chargement des paiements:', error);
+            setPayments([]);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-  if (loading) {
+    const loadStats = async () => {
+        try {
+            const response = await axios.get(`${API_BASE_URL}/payments/statistics/`, {
+                headers: getAuthHeaders()
+            });
+            console.log('Stats loaded:', response.data);
+            setStats(response.data);
+        } catch (error) {
+            console.error('Erreur lors du chargement des statistiques:', error);
+            setStats({
+                total_paid: 0,
+                pending_amount: 0,
+                completed_count: 0,
+                pending_count: 0
+            });
+        }
+    };
+
+    const handlePayment = async (paymentData) => {
+        setLoading(true);
+        try {
+            const response = await axios.post(`${API_BASE_URL}/payments/`, paymentData, {
+                headers: getAuthHeaders()
+            });
+
+            if (response.status === 201) {
+                alert('✅ Paiement effectué avec succès ! Le propriétaire recevra une notification.');
+                setShowPaymentModal(false);
+                loadPayments();
+                loadStats();
+            }
+        } catch (error) {
+            console.error('Erreur:', error);
+            if (error.response?.data) {
+                const errors = error.response.data;
+                let errorMessage = 'Erreur lors du paiement:\n';
+                Object.keys(errors).forEach(key => {
+                    errorMessage += `${key}: ${errors[key]}\n`;
+                });
+                alert(errorMessage);
+            } else {
+                alert('❌ Erreur lors du paiement. Veuillez réessayer.');
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const formatCurrency = (amount) => {
+        return new Intl.NumberFormat('fr-FR', {
+            style: 'currency',
+            currency: 'XOF',
+            minimumFractionDigits: 0
+        }).format(amount);
+    };
+
+    const getStatusBadge = (status) => {
+        const badges = {
+            completed: { 
+                color: 'bg-emerald-50 text-emerald-700 border-emerald-200', 
+                text: 'Confirmé', 
+                icon: CheckCircle 
+            },
+            pending: { 
+                color: 'bg-amber-50 text-amber-700 border-amber-200', 
+                text: 'En attente', 
+                icon: Clock 
+            },
+            failed: { 
+                color: 'bg-red-50 text-red-700 border-red-200', 
+                text: 'Rejeté', 
+                icon: AlertCircle 
+            }
+        };
+
+        const badge = badges[status] || badges.pending;
+        const Icon = badge.icon;
+
+        return (
+            <span className={`inline-flex items-center gap-1.5 px-3 py-1 text-sm font-medium rounded-full border ${badge.color}`}>
+                <Icon className="w-4 h-4" />
+                {badge.text}
+            </span>
+        );
+    };
+
+    const handleViewDetails = (payment) => {
+        setSelectedPayment(payment);
+        setShowDetailsModal(true);
+    };
+
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-7xl mx-auto text-sm text-gray-600">Chargement des paiements…</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className={`min-h-screen bg-gray-50 p-6 transition-all duration-700 ease-out ${isVisible ? 'opacity-100' : 'opacity-0'}`}>
-      <div className="max-w-7xl mx-auto space-y-6">
-
-        {/* En-tête */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Paiements & Historique</h1>
-            <p className="mt-1 text-sm text-gray-600">Consultez vos paiements récents, effectuez vos règlements en ligne et téléchargez vos quittances.</p>
-          </div>
-          <button
-            onClick={() => setIsPaymentModalOpen(true)}
-            className="mt-4 sm:mt-0 px-6 py-3 bg-gradient-to-r from-green-400 to-teal-400 text-white rounded-lg font-bold shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center gap-2"
-          >
-            <span>💳</span> Payer mon loyer maintenant
-          </button>
-        </div>
-
-        {/* Résumé financier */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
-          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-            <div className="text-xs text-gray-500 font-semibold mb-1">Logement</div>
-            <div className="text-sm font-bold text-gray-900 mb-0.5">{tenantSummary.property}</div>
-            <div className="text-xs text-gray-600">{tenantSummary.address}</div>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-            <div className="text-xs text-gray-500 font-semibold mb-1">Loyer mensuel</div>
-            <div className="text-2xl font-bold text-blue-600">{formatCurrency(tenantSummary.rentAmount)}</div>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-            <div className="text-xs text-gray-500 font-semibold mb-1">Prochain paiement</div>
-            <div className="text-lg font-bold text-gray-900">{tenantSummary.nextPaymentDate}</div>
-            <div className="text-xs text-amber-600 mt-1">⏰ Dans {tenantSummary.daysUntilDue} jours</div>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-            <div className="text-xs text-gray-500 font-semibold mb-1">Statut</div>
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${paymentData?.status_color === 'green' ? 'bg-green-500' : paymentData?.status_color === 'orange' ? 'bg-orange-500' : 'bg-red-500'} animate-pulse`}></div>
-              <div className={`text-lg font-bold ${paymentData?.status_color === 'green' ? 'text-green-600' : paymentData?.status_color === 'orange' ? 'text-orange-600' : 'text-red-600'}`}>
-                {tenantSummary.paymentStatus}
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-            <div className="text-xs text-gray-500 font-semibold mb-1">Solde dû</div>
-            <div className="text-2xl font-bold text-green-600">{formatCurrency(tenantSummary.totalDue)}</div>
-            <div className="text-xs text-green-600 mt-1">📈 Taux de régularité: {collectionRate}</div>
-          </div>
-        </div>
-
-        {/* Alertes */}
-        {paymentHistory.some(p => p.status === 'paid') && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded-lg">
-              <div className="flex items-start gap-3">
-                <div className="text-xl">🟢</div>
-                <div>
-                  <div className="font-bold text-green-700">Merci ! Un paiement a bien été reçu récemment.</div>
-                  <div className="text-sm text-green-600">
-                    {(() => {
-                      const last = paymentHistory.find(p => p.status === 'paid');
-                      return last ? `${last.month} - ${formatCurrency(last.amount)} - Confirmé ${last.date || ''}` : '';
-                    })()}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-lg">
-              <div className="flex items-start gap-3">
-                <div className="text-xl">🔔</div>
-                <div>
-                  <div className="font-bold text-blue-700">Votre prochain paiement approche.</div>
-                  <div className="text-sm text-blue-600">{tenantSummary.nextPaymentDate} - {formatCurrency(tenantSummary.rentAmount)}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Section principale */}
-          <div className="lg:col-span-2 space-y-6">
-
-            {/* Graphique */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-base font-semibold text-gray-900">Évolution des paiements</h2>
-                <div className="flex gap-2">
-                  <button className="px-3 py-1 bg-blue-600 text-white rounded-md text-xs font-medium">
-                    Mensuel
-                  </button>
-                  <button className="px-3 py-1 bg-gray-100 text-gray-700 rounded-md text-xs font-medium" disabled>
-                    Annuel
-                  </button>
-                </div>
-              </div>
-
-              {chartData.every(d => d.amount === 0) && (
-                <div className="text-xs text-gray-500 mb-2">Aucune donnée de paiement à afficher.</div>
-              )}
-
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip formatter={(value) => formatCurrency(value)} />
-                  <Bar dataKey="amount" fill="#10b981" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Tableau historique */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-base font-semibold text-gray-900">Paiements récents</h2>
-                    <p className="text-xs text-gray-500 mt-0.5">{filteredPayments.length} paiement(s)</p>
-                  </div>
-                  <div className="flex gap-2">
+        <div className={`min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 p-6 transition-all duration-700 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+            <div className="max-w-7xl mx-auto space-y-6">
+                {/* En-tête */}
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                        <h1 className="text-3xl font-bold text-gray-900">Mes Paiements</h1>
+                        <p className="text-sm text-gray-600 mt-1">Gérez vos paiements de loyer en toute simplicité</p>
+                    </div>
                     <button
-                      className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors flex items-center gap-1.5"
-                      onClick={() => window.print()}
+                        onClick={() => setShowPaymentModal(true)}
+                        disabled={loading}
+                        className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-lg hover:shadow-xl disabled:opacity-50"
                     >
-                      <Download className="w-3.5 h-3.5" />
-                      Télécharger tous
+                        <Plus className="w-5 h-5" />
+                        Effectuer un paiement
                     </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-white border-b border-gray-200">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Mois</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Montant</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Date de paiement</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Mode</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Statut</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Reçu</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-100">
-                    {filteredPayments.map((payment) => (
-                      <tr key={`${payment.month}-${payment.id}`} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="text-xs font-medium text-gray-900">{payment.month}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-xs font-semibold text-gray-900">{formatCurrency(payment.amount)}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-xs text-gray-600">{payment.date || '—'}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-xs text-gray-600">{payment.method}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex px-2.5 py-1 text-xs font-medium rounded-md ${payment.status === 'paid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-                            {payment.status === 'paid' ? '✅ Payé' : '❌ Non payé'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <button
-                            className={`text-blue-500 font-semibold hover:text-blue-700 text-xs ${payment.status !== 'paid' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            onClick={() => payment.status === 'paid' && handleDownloadReceipt(payment.id)}
-                            disabled={payment.status !== 'paid'}
-                            title={payment.status !== 'paid' ? 'Reçu indisponible' : 'Télécharger la quittance'}
-                          >
-                            📥 Télécharger
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Actions rapides */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <h3 className="text-base font-semibold text-gray-900 mb-4">Actions rapides</h3>
-              <div className="space-y-3">
-                <button
-                  onClick={() => setIsPaymentModalOpen(true)}
-                  className="w-full text-sm flex items-center gap-3 p-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Payer maintenant
-                </button>
-                <button className="w-full text-sm flex items-center gap-3 p-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Télécharger quittance
-                </button>
-                <button className="w-full text-sm flex items-center gap-3 p-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 01-2 2z" />
-                  </svg>
-                  Contacter support
-                </button>
-              </div>
-            </div>
-
-            {/* Paramètres paiement */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <h3 className="text-base font-semibold text-gray-900 mb-4">Paramètres de paiement</h3>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <div className="font-semibold text-gray-900 text-sm">Paiement automatique</div>
-                    <div className="text-xs text-gray-600">Chaque mois</div>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" className="sr-only peer" defaultChecked={false} />
-                    <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  </label>
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <div className="font-semibold text-gray-900 text-sm">Alertes email/SMS</div>
-                    <div className="text-xs text-gray-600">Avant l'échéance</div>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" className="sr-only peer" defaultChecked={true} />
-                    <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  </label>
+                {/* Statistiques */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <StatCard
+                        icon={CheckCircle}
+                        iconBgColor="bg-emerald-100"
+                        iconColor="text-emerald-600"
+                        label="Total payé"
+                        value={formatCurrency(stats.total_paid)}
+                    />
+                    <StatCard
+                        icon={Clock}
+                        iconBgColor="bg-amber-100"
+                        iconColor="text-amber-600"
+                        label="En attente"
+                        value={formatCurrency(stats.pending_amount)}
+                    />
+                    <StatCard
+                        icon={CreditCard}
+                        iconBgColor="bg-blue-100"
+                        iconColor="text-blue-600"
+                        label="Paiements confirmés"
+                        value={stats.completed_count}
+                    />
+                    <StatCard
+                        icon={AlertCircle}
+                        iconBgColor="bg-purple-100"
+                        iconColor="text-purple-600"
+                        label="En attente validation"
+                        value={stats.pending_count}
+                    />
                 </div>
-              </div>
-            </div>
 
-            {/* Statistiques */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <h3 className="text-base font-semibold text-gray-900 mb-4">Statistiques</h3>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm text-gray-600">Taux de régularité</span>
-                    <span className="text-sm font-semibold text-emerald-600">{collectionRate}</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bg-emerald-500 h-2 rounded-full" style={{ width: collectionRate }}></div>
-                  </div>
+                {/* Historique des paiements */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h2 className="text-lg font-semibold text-gray-900">Historique des paiements</h2>
+                                <p className="text-sm text-gray-600 mt-1">{payments.length} paiement(s)</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {loading ? (
+                        <div className="p-12 text-center">
+                            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+                            <p className="mt-4 text-gray-600">Chargement...</p>
+                        </div>
+                    ) : payments.length === 0 ? (
+                        <div className="p-12 text-center">
+                            <CreditCard className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                            <p className="text-gray-600">Aucun paiement effectué pour le moment</p>
+                            <button
+                                onClick={() => setShowPaymentModal(true)}
+                                className="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                            >
+                                Effectuer votre premier paiement
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead className="bg-gray-50 border-b border-gray-200">
+                                    <tr>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Référence</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Propriété</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Mois</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Montant</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Méthode</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Date</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Statut</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 bg-white">
+                                    {payments.map((payment) => (
+                                        <tr key={payment.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-6 py-4">
+                                                <span className="text-sm font-mono text-gray-900 font-semibold">{payment.transaction_reference}</span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="text-sm text-gray-900 font-medium">{payment.property_title}</div>
+                                                <div className="text-xs text-gray-500">{payment.property_address}</div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className="text-sm text-gray-900">{payment.payment_month}</span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className="text-sm font-semibold text-gray-900">{formatCurrency(payment.amount)}</span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className="text-sm text-gray-600 capitalize">{payment.payment_method?.replace('_', ' ')}</span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className="text-sm text-gray-600">
+                                                    {new Date(payment.payment_date).toLocaleDateString('fr-FR', {
+                                                        day: '2-digit',
+                                                        month: 'short',
+                                                        year: 'numeric'
+                                                    })}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                {getStatusBadge(payment.status)}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <button 
+                                                    onClick={() => handleViewDetails(payment)}
+                                                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                                    title="Voir détails"
+                                                >
+                                                    <Eye className="w-4 h-4" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
-                <div className="pt-4 border-t border-gray-100 space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Total payé</span>
-                    <span className="text-sm font-semibold text-gray-900">{formatCurrency(totalPaid)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Méthode préférée</span>
-                    <span className="text-sm font-semibold text-gray-900">
-                      {(() => {
-                        const paid = paymentHistory.filter(p => p.status === 'paid');
-                        if (paid.length === 0) return '—';
-                        return paid[0].method || '—';
-                      })()}
-                    </span>
-                  </div>
-                </div>
-              </div>
             </div>
 
-            {/* IA Assistant */}
-            <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6 border-2 border-purple-200 shadow-sm">
-              <h3 className="text-base font-bold text-purple-900 mb-4">✨ Assistant IA</h3>
-              <div className="space-y-3">
-                <div className="bg-white rounded-lg p-3 border border-purple-200">
-                  <div className="text-sm font-semibold text-gray-900 mb-1">💡 Conseil</div>
-                  <div className="text-xs text-gray-600">
-                    {totalDue === 0 ? 'Votre historique montre une régularité excellente. Bravo pour votre ponctualité !' : 'Il reste des paiements en attente. Pensez à régulariser pour éviter des pénalités.'}
-                  </div>
-                </div>
-                <button className="w-full p-3 bg-purple-500 text-white rounded-lg font-semibold hover:bg-purple-600 transition-colors text-sm">
-                  💬 Parler à l'assistant
-                </button>
-              </div>
-            </div>
-          </div>
+            {/* Modal de paiement */}
+            {showPaymentModal && (
+                <PaymentModal
+                    contracts={contracts}
+                    onClose={() => setShowPaymentModal(false)}
+                    onSubmit={handlePayment}
+                    loading={loading}
+                />
+            )}
+
+            {/* Modal de détails */}
+            {showDetailsModal && selectedPayment && (
+                <PaymentDetailsModal
+                    payment={selectedPayment}
+                    onClose={() => {
+                        setShowDetailsModal(false);
+                        setSelectedPayment(null);
+                    }}
+                    formatCurrency={formatCurrency}
+                    getStatusBadge={getStatusBadge}
+                />
+            )}
         </div>
-      </div>
+    );
+}
 
-      {/* Modal de paiement */}
-      <PaymentModal
-        isOpen={isPaymentModalOpen}
-        onClose={() => setIsPaymentModalOpen(false)}
-        tenantData={{
-          property: tenantSummary.property,
-          address: tenantSummary.address,
-          rentAmount: tenantSummary.rentAmount,
-          nextPaymentDate: tenantSummary.nextPaymentDate,
-          paymentStatus: tenantSummary.paymentStatus,
-          totalDue: tenantSummary.totalDue,
-          daysUntilDue: tenantSummary.daysUntilDue
-        }}
-        formatCurrency={formatCurrency}
-        onPaymentCreated={() => {
-          loadPaymentStatus();
-          loadPaymentsList();
-        }}
-      />
-    </div>
-  );
+// Composant StatCard
+function StatCard({ icon: Icon, iconBgColor, iconColor, label, value }) {
+    return (
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+            <div className="flex items-center gap-4">
+                <div className={`w-12 h-12 ${iconBgColor} rounded-lg flex items-center justify-center`}>
+                    <Icon className={`w-6 h-6 ${iconColor}`} />
+                </div>
+                <div>
+                    <p className="text-sm font-medium text-gray-600">{label}</p>
+                    <p className="text-xl font-bold text-gray-900">{value}</p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// Composant Modal pour effectuer un paiement
+function PaymentModal({ contracts, onClose, onSubmit, loading }) {
+    const [formData, setFormData] = useState({
+        contract: '',
+        amount: '',
+        payment_month: '',
+        payment_method: '',
+        notes: ''
+    });
+
+    const paymentMethods = [
+        { value: 'orange_money', label: 'Orange Money', icon: '🟠' },
+        { value: 'mtn_money', label: 'MTN Money', icon: '🟡' },
+        { value: 'moov_money', label: 'Moov Money', icon: '🔵' },
+        { value: 'wave', label: 'Wave', icon: '💙' },
+        { value: 'carte_bancaire', label: 'Carte Bancaire', icon: '💳' },
+        { value: 'virement', label: 'Virement Bancaire', icon: '🏦' },
+        { value: 'especes', label: 'Espèces', icon: '💵' },
+    ];
+
+    const months = [
+        'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+        'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
+    ];
+
+    const currentYear = new Date().getFullYear();
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSubmit(formData);
+    };
+
+    const handleContractChange = (contractId) => {
+        setFormData({ ...formData, contract: contractId });
+        const selectedContract = contracts.find(c => c.id === parseInt(contractId));
+        if (selectedContract) {
+            setFormData(prev => ({
+                ...prev,
+                contract: contractId,
+                amount: selectedContract.amount
+            }));
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-indigo-500 to-purple-600">
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-xl font-bold text-white">Effectuer un paiement</h3>
+                        <button
+                            onClick={onClose}
+                            className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                        >
+                            <X className="w-5 h-5 text-white" />
+                        </button>
+                    </div>
+                </div>
+
+                <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                    {/* Sélection du contrat */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            <CreditCard className="w-4 h-4 inline mr-2" />
+                            Contrat
+                        </label>
+                        <select
+                            required
+                            value={formData.contract}
+                            onChange={(e) => handleContractChange(e.target.value)}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        >
+                            <option value="">Sélectionner un contrat</option>
+                            {contracts.map(contract => (
+                                <option key={contract.id} value={contract.id}>
+                                    {contract.property_title} - {contract.amount} FCFA/mois
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        {/* Montant */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                <DollarSign className="w-4 h-4 inline mr-2" />
+                                Montant (FCFA)
+                            </label>
+                            <input
+                                type="number"
+                                required
+                                value={formData.amount}
+                                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                placeholder="280000"
+                            />
+                        </div>
+
+                        {/* Mois concerné */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                <Calendar className="w-4 h-4 inline mr-2" />
+                                Mois concerné
+                            </label>
+                            <select
+                                required
+                                value={formData.payment_month}
+                                onChange={(e) => setFormData({ ...formData, payment_month: e.target.value })}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            >
+                                <option value="">Sélectionner un mois</option>
+                                {months.map(month => (
+                                    <option key={month} value={`${month} ${currentYear}`}>
+                                        {month} {currentYear}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Méthode de paiement */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Méthode de paiement
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                            {paymentMethods.map(method => (
+                                <button
+                                    key={method.value}
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, payment_method: method.value })}
+                                    className={`p-4 border-2 rounded-lg text-left transition-all ${
+                                        formData.payment_method === method.value
+                                            ? 'border-indigo-500 bg-indigo-50'
+                                            : 'border-gray-200 hover:border-gray-300'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-2xl">{method.icon}</span>
+                                        <span className="text-sm font-medium">{method.label}</span>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Notes */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Notes (optionnel)
+                        </label>
+                        <textarea
+                            value={formData.notes}
+                            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            rows="3"
+                            placeholder="Ajouter des notes..."
+                        />
+                    </div>
+
+                    {/* Boutons */}
+                    <div className="flex gap-4">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            disabled={loading}
+                            className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                        >
+                            Annuler
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                            {loading ? (
+                                <>
+                                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                                    Traitement...
+                                </>
+                            ) : (
+                                <>
+                                    <CheckCircle className="w-5 h-5" />
+                                    Confirmer le paiement
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+// Composant Modal de détails du paiement
+function PaymentDetailsModal({ payment, onClose, formatCurrency, getStatusBadge }) {
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full">
+                <div className="p-6 border-b border-gray-200">
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-xl font-bold text-gray-900">Détails du paiement</h3>
+                        <button
+                            onClick={onClose}
+                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="p-6 space-y-6">
+                    <div className="grid grid-cols-2 gap-6">
+                        <div>
+                            <p className="text-sm text-gray-600 mb-1">Référence</p>
+                            <p className="text-base font-mono font-semibold text-gray-900">{payment.transaction_reference}</p>
+                        </div>
+                        <div>
+                            <p className="text-sm text-gray-600 mb-1">Statut</p>
+                            {getStatusBadge(payment.status)}
+                        </div>
+                    </div>
+
+                    <div className="border-t pt-6">
+                        <h4 className="font-semibold text-gray-900 mb-4">Informations de paiement</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <p className="text-sm text-gray-600">Montant</p>
+                                <p className="text-lg font-bold text-gray-900">{formatCurrency(payment.amount)}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-gray-600">Mois concerné</p>
+                                <p className="text-base font-medium text-gray-900">{payment.payment_month}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-gray-600">Méthode de paiement</p>
+                                <p className="text-base font-medium text-gray-900 capitalize">{payment.payment_method?.replace('_', ' ')}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-gray-600">Date de paiement</p>
+                                <p className="text-base font-medium text-gray-900">
+                                    {new Date(payment.payment_date).toLocaleDateString('fr-FR', {
+                                        day: '2-digit',
+                                        month: 'long',
+                                        year: 'numeric'
+                                    })}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="border-t pt-6">
+                        <h4 className="font-semibold text-gray-900 mb-4">Propriété</h4>
+                        <div className="bg-gray-50 p-4 rounded-lg">
+                            <p className="font-medium text-gray-900">{payment.property_title}</p>
+                            <p className="text-sm text-gray-600 mt-1">{payment.property_address}</p>
+                        </div>
+                    </div>
+
+                    {payment.notes && (
+                        <div className="border-t pt-6">
+                            <h4 className="font-semibold text-gray-900 mb-2">Notes</h4>
+                            <p className="text-gray-700">{payment.notes}</p>
+                        </div>
+                    )}
+
+                    <div className="border-t pt-6">
+                        <button
+                            onClick={onClose}
+                            className="w-full px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                        >
+                            Fermer
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 }

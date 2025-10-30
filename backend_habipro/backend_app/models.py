@@ -1,9 +1,10 @@
 from django.db import models
-from django.core.validators import FileExtensionValidator, MinValueValidator
+from django.core.validators import FileExtensionValidator, MinValueValidator, MaxValueValidator
 from django.db.models import Q
 from django.utils.text import slugify
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.utils import timezone
+from decimal import Decimal
 import uuid
 import os
 
@@ -380,6 +381,7 @@ class PropertyMedia(models.Model):
         
         super().save(*args, **kwargs)
 
+
 # ==============================================
 # MODÈLE TENANT (LOCATAIRE)
 # ==============================================
@@ -602,77 +604,6 @@ class Location(models.Model):
             if not active_locations:
                 self.property.statut = 'disponible'
                 self.property.save()
-
-
-# ==============================================
-# MODÈLE PAYMENT (PAIEMENT)
-# ==============================================
-
-class Payment(models.Model):
-    """Modèle pour gérer les paiements de loyer"""
-
-    STATUS_CHOICES = [
-        ('paid', 'Payé'),
-        ('unpaid', 'Non payé'),
-        ('À jour', 'À jour'),
-    ]
-
-    PAYMENT_METHOD_CHOICES = [
-        ('Orange Money', 'Orange Money'),
-        ('MTN Money', 'MTN Money'),
-        ('Mobile Money', 'Mobile Money'),
-        ('Carte bancaire', 'Carte bancaire'),
-        ('Virement bancaire', 'Virement bancaire'),
-        ('Espèces', 'Espèces'),
-        ('Chèque', 'Chèque'),
-    ]
-
-    # Relations
-    tenant = models.ForeignKey(
-        Tenant,
-        on_delete=models.CASCADE,
-        related_name='payments',
-        verbose_name="Locataire"
-    )
-    linked_property = models.ForeignKey(
-        Property,
-        on_delete=models.CASCADE,
-        related_name='payments',
-        verbose_name="Propriété"
-    )
-
-    # Détails du paiement
-    month = models.CharField(max_length=50, verbose_name="Mois")
-    amount = models.IntegerField(validators=[MinValueValidator(0)], verbose_name="Montant")
-    payment_date = models.DateField(verbose_name="Date de paiement")
-
-    # Méthode et statut
-    payment_method = models.CharField(max_length=50, choices=PAYMENT_METHOD_CHOICES, verbose_name="Méthode de paiement")
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='unpaid', verbose_name="Statut")
-
-    # Prochaine échéance
-    next_payment_date = models.DateField(null=True, blank=True, verbose_name="Date du prochain paiement")
-
-    # Dates
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Date de création")
-    updated_at = models.DateTimeField(auto_now=True, verbose_name="Date de modification")
-
-    class Meta:
-        verbose_name = "Paiement"
-        verbose_name_plural = "Paiements"
-        ordering = ['-payment_date']
-        db_table = 'payments'
-
-    def __str__(self):
-        return f"Paiement {self.month} - {self.tenant.full_name}"
-
-    @property
-    def days_until_due(self):
-        """Calcule les jours restants jusqu'à la prochaine échéance"""
-        if self.next_payment_date:
-            delta = self.next_payment_date - timezone.now().date()
-            return delta.days
-        return None
 
 
 # ==============================================
@@ -995,45 +926,44 @@ class Contract(models.Model):
         verbose_name_plural = "Contrats"
 
     def __str__(self):
-        return f"Contrat {self.contract_type} - {self.property.titre} - {self.tenant.user.get_full_name()}"
+        return f"Contrat {self.contract_type} - {self.property.titre} - {self.tenant.full_name}"
 
 
 # ==============================================
-# MODÈLE PAYMENT (PAIEMENT)
+# MODÈLE PAYMENT SIMPLIFIÉ (NOUVEAU)
 # ==============================================
 
 class Payment(models.Model):
-    """Modèle pour gérer les paiements de loyer"""
+    """Modèle simplifié pour gérer les paiements de loyer"""
 
     PAYMENT_METHOD_CHOICES = [
-        ('orange', 'Orange Money'),
-        ('mtn', 'MTN Money'),
-        ('moov', 'Moov Money'),
-        ('card', 'Carte Bancaire'),
-        ('transfer', 'Virement Bancaire'),
-        ('cash', 'Espèces'),
-        ('cheque', 'Chèque'),
+        ('orange_money', 'Orange Money'),
+        ('mtn_money', 'MTN Money'),
+        ('moov_money', 'Moov Money'),
+        ('wave', 'Wave'),
+        ('carte_bancaire', 'Carte Bancaire'),
+        ('virement', 'Virement Bancaire'),
+        ('especes', 'Espèces'),
     ]
 
     STATUS_CHOICES = [
         ('pending', 'En attente'),
         ('completed', 'Complété'),
         ('failed', 'Échoué'),
-        ('cancelled', 'Annulé'),
     ]
 
-    # Relations principales
+    # Relations
     tenant = models.ForeignKey(
         Tenant,
         on_delete=models.CASCADE,
         related_name='payments',
         verbose_name="Locataire"
     )
-    property = models.ForeignKey(
-        Property,
+    contract = models.ForeignKey(
+        Contract,
         on_delete=models.CASCADE,
         related_name='payments',
-        verbose_name="Propriété"
+        verbose_name="Contrat"
     )
     owner = models.ForeignKey(
         User,
@@ -1041,14 +971,6 @@ class Payment(models.Model):
         related_name='received_payments',
         verbose_name="Propriétaire",
         limit_choices_to={'role': 'proprietaire'}
-    )
-    location = models.ForeignKey(
-        Location,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='payments',
-        verbose_name="Location associée"
     )
 
     # Informations du paiement
@@ -1069,38 +991,31 @@ class Payment(models.Model):
     status = models.CharField(
         max_length=50,
         choices=STATUS_CHOICES,
-        default='completed',
+        default='pending',
         verbose_name="Statut"
     )
 
-    # Paiement automatique
-    auto_payment_enabled = models.BooleanField(
-        default=False,
-        verbose_name="Paiement automatique activé"
-    )
-
-    # Informations complémentaires
+    # Références
     transaction_reference = models.CharField(
         max_length=100,
-        blank=True,
+        unique=True,
         verbose_name="Référence de transaction"
     )
+    
+    # Notes
     notes = models.TextField(
         blank=True,
         verbose_name="Notes"
     )
 
-    # Reçu PDF
-    receipt_pdf = models.FileField(
-        upload_to='payments/receipts/',
-        null=True,
-        blank=True,
-        verbose_name="Reçu PDF"
+    # Notification
+    owner_notified = models.BooleanField(
+        default=False,
+        verbose_name="Propriétaire notifié"
     )
 
     # Dates
     payment_date = models.DateTimeField(
-        auto_now_add=True,
         verbose_name="Date de paiement"
     )
     created_at = models.DateTimeField(
@@ -1117,6 +1032,276 @@ class Payment(models.Model):
         ordering = ['-payment_date']
         verbose_name = "Paiement"
         verbose_name_plural = "Paiements"
+        # Un seul paiement par mois et par contrat
+        unique_together = [['contract', 'payment_month']]
 
     def __str__(self):
         return f"Paiement {self.payment_month} - {self.tenant.full_name} - {self.amount} FCFA"
+
+    def save(self, *args, **kwargs):
+        # Générer une référence unique si elle n'existe pas
+        if not self.transaction_reference:
+            self.transaction_reference = f"PAY-{uuid.uuid4().hex[:12].upper()}"
+        
+        # Auto-remplir le propriétaire depuis le contrat
+        if not self.owner and self.contract:
+            self.owner = self.contract.owner
+        
+        super().save(*args, **kwargs)
+
+
+# ==============================================
+# MODÈLES JURIDIQUES
+# ==============================================
+
+class JuridicalDocument(models.Model):
+    """Modèle pour les documents juridiques avec support IA"""
+    
+    STATUS_CHOICES = [
+        ('completed', 'Terminé'),
+        ('in-progress', 'En cours'),
+        ('pending', 'En attente'),
+    ]
+    
+    # Relations
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='juridical_documents',
+        verbose_name='Utilisateur'
+    )
+    
+    # Informations du document
+    name = models.CharField(max_length=255, verbose_name='Nom du fichier')
+    file = models.FileField(
+        upload_to='juridical_documents/%Y/%m/%d/',
+        verbose_name='Fichier PDF'
+    )
+    file_type = models.CharField(max_length=10, default='PDF', verbose_name='Type')
+    file_size = models.CharField(max_length=50, verbose_name='Taille')
+    
+    # Statut et traitement
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        verbose_name='Statut'
+    )
+    is_processed = models.BooleanField(default=False, verbose_name='Traité par l\'IA')
+    text_content = models.TextField(blank=True, null=True, verbose_name='Contenu extrait')
+    
+    # Dates
+    uploaded_at = models.DateTimeField(auto_now_add=True, verbose_name='Date d\'upload')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Date de modification')
+    
+    class Meta:
+        verbose_name = 'Document Juridique'
+        verbose_name_plural = 'Documents Juridiques'
+        ordering = ['-uploaded_at']
+        db_table = 'juridical_documents'
+    
+    def __str__(self):
+        return self.name
+    
+    def get_modified_time(self):
+        """Retourne le temps écoulé depuis la modification"""
+        diff = timezone.now() - self.updated_at
+        
+        if diff.days == 0:
+            hours = diff.seconds // 3600
+            if hours == 0:
+                minutes = diff.seconds // 60
+                return f"Il y a {minutes} min" if minutes > 0 else "À l'instant"
+            return f"Il y a {hours}h"
+        elif diff.days == 1:
+            return "Hier"
+        else:
+            return f"Il y a {diff.days} jours"
+    
+    def delete(self, *args, **kwargs):
+        """Supprime le fichier physique lors de la suppression"""
+        if self.file:
+            if os.path.isfile(self.file.path):
+                os.remove(self.file.path)
+        super().delete(*args, **kwargs)
+
+
+class JuridicalChatMessage(models.Model):
+    """Modèle pour l'historique des conversations avec l'IA"""
+    
+    MESSAGE_TYPES = [
+        ('user', 'Utilisateur'),
+        ('ai', 'IA'),
+    ]
+    
+    # Relations
+    document = models.ForeignKey(
+        JuridicalDocument,
+        on_delete=models.CASCADE,
+        related_name='chat_messages',
+        verbose_name='Document'
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='juridical_messages',
+        verbose_name='Utilisateur'
+    )
+    
+    # Contenu du message
+    message_type = models.CharField(
+        max_length=10,
+        choices=MESSAGE_TYPES,
+        verbose_name='Type de message'
+    )
+    content = models.TextField(verbose_name='Contenu')
+    
+    # Date
+    timestamp = models.DateTimeField(auto_now_add=True, verbose_name='Date')
+    
+    class Meta:
+        verbose_name = 'Message Chat Juridique'
+        verbose_name_plural = 'Messages Chat Juridique'
+        ordering = ['timestamp']
+        db_table = 'juridical_chat_messages'
+    
+    def __str__(self):
+        return f"{self.message_type}: {self.content[:50]}"
+
+
+# ==============================================
+# MODÈLE PRESTATAIRE (SERVICE PROVIDER)
+# ==============================================
+
+class Prestataire(models.Model):
+    """Modèle pour gérer les prestataires de services"""
+
+    SPECIALITE_CHOICES = [
+        ('Électricité', 'Électricité'),
+        ('Climatisation', 'Climatisation'),
+        ('Éclairage', 'Éclairage'),
+        ('Plomberie', 'Plomberie'),
+        ('Maçonnerie', 'Maçonnerie'),
+        ('Carrelage', 'Carrelage'),
+        ('Jardinage', 'Jardinage'),
+        ('Entretien espaces verts', 'Entretien espaces verts'),
+        ('Paysagisme', 'Paysagisme'),
+        ('Sécurité', 'Sécurité'),
+        ('Surveillance', 'Surveillance'),
+        ('Systèmes d\'alarme', 'Systèmes d\'alarme'),
+        ('Nettoyage', 'Nettoyage'),
+        ('Entretien ménager', 'Entretien ménager'),
+        ('Désinfection', 'Désinfection'),
+    ]
+
+    DISPONIBILITE_CHOICES = [
+        ('Disponible', 'Disponible'),
+        ('Occupé', 'Occupé'),
+    ]
+
+    # Propriétaire qui a ajouté le prestataire
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='prestataires',
+        verbose_name="Propriétaire",
+        limit_choices_to={'role': 'proprietaire'}
+    )
+
+    # Informations de base
+    nom = models.CharField(max_length=200, verbose_name="Nom de l'entreprise")
+    contact = models.CharField(max_length=200, verbose_name="Nom du contact")
+    telephone = models.CharField(max_length=20, verbose_name="Téléphone")
+    email = models.EmailField(verbose_name="Email")
+
+    # Spécialités (stockées comme JSON)
+    specialites = models.JSONField(
+        default=list,
+        verbose_name="Spécialités",
+        help_text="Liste des spécialités du prestataire"
+    )
+
+    # Localisation
+    zone = models.CharField(max_length=200, verbose_name="Zone d'intervention")
+
+    # Évaluation
+    note = models.DecimalField(
+        max_digits=2,
+        decimal_places=1,
+        default=Decimal('0.0'), 
+        validators=[
+            MinValueValidator(Decimal('0.0')),  
+            MaxValueValidator(Decimal('5.0'))   
+        ],
+        verbose_name="Note moyenne"
+    )
+    nb_avis = models.IntegerField(default=0, verbose_name="Nombre d'avis")
+
+    # Tarification
+    tarif_min = models.IntegerField(
+        validators=[MinValueValidator(0)],
+        verbose_name="Tarif minimum (FCFA)"
+    )
+    tarif_max = models.IntegerField(
+        validators=[MinValueValidator(0)],
+        verbose_name="Tarif maximum (FCFA)"
+    )
+
+    # Disponibilité
+    disponibilite = models.CharField(
+        max_length=100,
+        choices=DISPONIBILITE_CHOICES,
+        default='Disponible',
+        verbose_name="Disponibilité"
+    )
+
+    # Expérience et certifications
+    experience = models.CharField(max_length=50, verbose_name="Années d'expérience")
+    certifications = models.JSONField(
+        default=list,
+        verbose_name="Certifications",
+        help_text="Liste des certifications"
+    )
+
+    # Description
+    description = models.TextField(verbose_name="Description")
+
+    # Services proposés (JSON pour stocker nom et prix)
+    services = models.JSONField(
+        default=list,
+        verbose_name="Services proposés",
+        help_text="Liste des services avec leurs prix"
+    )
+
+    # Projets récents
+    projets_recents = models.JSONField(
+        default=list,
+        verbose_name="Projets récents",
+        help_text="Liste des projets récents"
+    )
+
+    # Dates
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Date d'ajout")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Date de modification")
+
+    class Meta:
+        verbose_name = "Prestataire"
+        verbose_name_plural = "Prestataires"
+        ordering = ['-created_at']
+        db_table = 'prestataires'
+
+    def __str__(self):
+        return self.nom
+
+    def get_tarif_range(self):
+        """Retourne la fourchette de tarifs formatée"""
+        return f"{self.tarif_min:,} - {self.tarif_max:,}"
+
+    def get_initials(self):
+        """Retourne les initiales du nom de l'entreprise"""
+        words = self.nom.split()
+        if len(words) >= 2:
+            return f"{words[0][0]}{words[1][0]}".upper()
+        return self.nom[0].upper() if self.nom else "?"
+    
+        

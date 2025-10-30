@@ -16,7 +16,7 @@ import EvaluationIA from "./PageOngletSideBare/EvaluationIA";
 import RevenusPaiements from "./PageOngletSideBare/RevenusPaiements";
 import ContratsDocuments from "./PageOngletSideBare/ContratsDocuments";
 import Prestataire from "./PageOngletSideBare/prestataire";
-
+import MaintenanceRequests from "./PageOngletSideBare/MaintenanceRequests";
 import MessagesPage from "./PageOngletSideBare/MessagesPage";
 import ParametresPage from "./PageOngletSideBare/ParametresPage";
 import GestionAvancee from "./PageOngletSideBare/Gestionavancee";
@@ -273,6 +273,7 @@ export default function ProprietaireDashboard() {
         setIsTenantModalOpen={setIsTenantModalOpen}
         onRefreshNeeded={(callback) => setRefreshTenantsCallback(() => callback)}
       />;
+      case 'maintenance': return <MaintenanceRequests />; // ⭐ NOUVEAU
       case 'evaluation': return <EvaluationIA />;
       case 'revenue': return <RevenusPaiements formatCurrency={formatCurrency} />;
       case 'contracts': return <ContratsDocuments setIsContractModalOpen={setIsContractModalOpen} />;
@@ -287,7 +288,6 @@ export default function ProprietaireDashboard() {
         return <TableaudeBord />;
     }
   };
-
   // Pour les modals
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTenantModalOpen, setIsTenantModalOpen] = useState(false);
@@ -354,6 +354,7 @@ export default function ProprietaireDashboard() {
     { id: 'dashboard', icon: '📊', label: 'Tableau de bord', active: true },
     { id: 'properties', icon: '🏢', label: 'Mes Propriétés' },
     { id: 'tenants', icon: '👥', label: 'Gestion Locataires' },
+    { id: 'maintenance', icon: '🔧', label: 'Maintenance' },
     { id: 'revenue', icon: '💰', label: 'Revenus & Paiements' },
     { id: 'contracts', icon: '📄', label: 'Contrats & Documents' },
   ];
@@ -365,7 +366,7 @@ export default function ProprietaireDashboard() {
   ];
 
   const adminItems = [
-    { id: 'settings', icon: '⚙️', label: 'Paramètres' },
+    //{ id: 'settings', icon: '⚙️', label: 'Paramètres' },
   ];
 
   const quickActions = [

@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model, authenticate
 from rest_framework.authtoken.models import Token
-from .models import Document, Property, PropertyMedia, VisitRequest, Tenant, Location, Contract, Payment
+from .models import Document, Property, PropertyMedia, VisitRequest, Tenant, Location, Contract, Payment ,JuridicalChatMessage,JuridicalDocument ,Prestataire ,MaintenanceRequest
+from django.utils import timezone
 from PyPDF2 import PdfReader
 import io
 
@@ -806,16 +807,13 @@ class ContractCreateSerializer(serializers.ModelSerializer):
 # ============================================
 
 class PaymentSerializer(serializers.ModelSerializer):
-    """Serializer pour les paiements"""
+    """Serializer pour afficher les paiements"""
 
-    # Informations en lecture seule
     tenant_name = serializers.CharField(source='tenant.full_name', read_only=True)
     tenant_phone = serializers.CharField(source='tenant.phone', read_only=True)
-    tenant_email = serializers.EmailField(source='tenant.email', read_only=True)
-    property_title = serializers.CharField(source='property.titre', read_only=True)
-    property_address = serializers.CharField(source='property.adresse', read_only=True)
+    property_title = serializers.CharField(source='contract.property.titre', read_only=True)
+    property_address = serializers.CharField(source='contract.property.adresse', read_only=True)
     owner_name = serializers.CharField(source='owner.get_full_name', read_only=True)
-    owner_email = serializers.EmailField(source='owner.email', read_only=True)
 
     class Meta:
         model = Payment
@@ -824,54 +822,646 @@ class PaymentSerializer(serializers.ModelSerializer):
             'tenant',
             'tenant_name',
             'tenant_phone',
-            'tenant_email',
-            'property',
+            'contract',
             'property_title',
             'property_address',
             'owner',
             'owner_name',
-            'owner_email',
-            'location',
             'amount',
             'payment_month',
             'payment_method',
             'status',
-            'auto_payment_enabled',
             'transaction_reference',
             'notes',
-            'receipt_pdf',
+            'owner_notified',
             'payment_date',
             'created_at',
-            'updated_at',
         ]
-        read_only_fields = ['payment_date', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'owner', 'transaction_reference']
 
 
-class PaymentCreateSerializer(serializers.ModelSerializer):
-    """Serializer pour la création de paiements"""
+class TenantPaymentCreateSerializer(serializers.ModelSerializer):
+    """Serializer pour que le locataire crée un paiement"""
 
     class Meta:
         model = Payment
         fields = [
-            'tenant',
-            'property',
-            'location',
+            'contract',
             'amount',
             'payment_month',
             'payment_method',
-            'status',
-            'auto_payment_enabled',
-            'transaction_reference',
             'notes',
         ]
 
     def validate(self, attrs):
-        """Validation des données lors de la création"""
-        # Vérifier que le montant est positif
-        amount = attrs.get('amount')
-        if amount and amount <= 0:
+        """Validation"""
+        # Vérifier que le contrat appartient bien au locataire
+        request = self.context.get('request')
+        contract = attrs.get('contract')
+        
+        if not contract:
             raise serializers.ValidationError({
-                'amount': 'Le montant doit être supérieur à 0'
+                'contract': 'Le contrat est requis'
+            })
+
+        # Vérifier que le locataire a bien un profil Tenant
+        tenant = Tenant.objects.filter(user=request.user).first()
+        if not tenant:
+            raise serializers.ValidationError({
+                'error': 'Aucun profil locataire trouvé'
+            })
+
+        # Vérifier que le contrat appartient au locataire
+        if contract.tenant != tenant:
+            raise serializers.ValidationError({
+                'contract': 'Ce contrat ne vous appartient pas'
+            })
+
+        # Vérifier qu'un paiement n'existe pas déjà pour ce mois
+        payment_month = attrs.get('payment_month')
+        existing = Payment.objects.filter(
+            contract=contract,
+            payment_month=payment_month,
+            status='completed'
+        ).exists()
+
+        if existing:
+            raise serializers.ValidationError({
+                'payment_month': f'Un paiement pour {payment_month} existe déjà'
             })
 
         return attrs
+
+    def create(self, validated_data):
+        """Créer le paiement"""
+        request = self.context.get('request')
+        tenant = Tenant.objects.get(user=request.user)
+        contract = validated_data['contract']
+
+        # Créer le paiement
+        payment = Payment.objects.create(
+            tenant=tenant,
+            contract=contract,
+            owner=contract.owner,
+            amount=validated_data['amount'],
+            payment_month=validated_data['payment_month'],
+            payment_method=validated_data['payment_method'],
+            notes=validated_data.get('notes', ''),
+            status='pending',  # En attente de confirmation
+            payment_date=timezone.now()
+        )
+
+        return payment
+class JuridicalDocumentSerializer(serializers.ModelSerializer):
+    """Serializer pour les documents juridiques"""
+    
+    modified = serializers.SerializerMethodField()
+    file_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = JuridicalDocument
+        fields = [
+            'id', 'name', 'file', 'file_url', 'file_type', 'file_size',
+            'status', 'uploaded_at', 'modified', 'is_processed'
+        ]
+        read_only_fields = ['id', 'uploaded_at', 'is_processed']
+    
+    def get_modified(self, obj):
+        return obj.get_modified_time()
+    
+    def get_file_url(self, obj):
+        request = self.context.get('request')
+        if obj.file and request:
+            return request.build_absolute_uri(obj.file.url)
+        return None
+
+
+class JuridicalChatMessageSerializer(serializers.ModelSerializer):
+    """Serializer pour les messages de chat"""
+    
+    timestamp_formatted = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = JuridicalChatMessage
+        fields = ['id', 'document', 'message_type', 'content', 'timestamp', 'timestamp_formatted']
+        read_only_fields = ['id', 'timestamp']
+    
+    def get_timestamp_formatted(self, obj):
+        return obj.timestamp.strftime('%H:%M')
+
+
+class AskQuestionSerializer(serializers.Serializer):
+    """Serializer pour les questions à l'IA"""
+    
+    document_id = serializers.IntegerField()
+    question = serializers.CharField()
+    max_tokens = serializers.IntegerField(default=1024)
+    model_name = serializers.CharField(default="models/gemini-2.5-flash")
+
+# Dans votre fichier serializers.py
+# Ajoutez cet import en haut du fichier
+from decimal import Decimal
+
+# Puis remplacez les trois serializers Prestataire par ceci :
+
+# ==============================================
+# SERIALIZERS POUR PRESTATAIRE
+# ==============================================
+
+from decimal import Decimal
+
+class PrestataireSerializer(serializers.ModelSerializer):
+    """Serializer complet pour afficher un prestataire"""
+    
+    owner_name = serializers.SerializerMethodField()
+    tarif_display = serializers.SerializerMethodField()
+    note = serializers.DecimalField(
+        max_digits=2,
+        decimal_places=1,
+        default=Decimal('0.0'),
+        min_value=Decimal('0.0'),
+        max_value=Decimal('5.0'),
+        required=False,
+        coerce_to_string=False
+    )
+    
+    class Meta:
+        model = Prestataire
+        fields = [
+            'id',
+            'owner',
+            'owner_name',
+            'nom',
+            'contact',
+            'telephone',
+            'email',
+            'specialites',
+            'zone',
+            'note',
+            'nb_avis',
+            'tarif_min',
+            'tarif_max',
+            'tarif_display',
+            'disponibilite',
+            'experience',
+            'certifications',
+            'description',
+            'services',
+            'projets_recents',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+    
+    def get_owner_name(self, obj):
+        """Retourne le nom complet du propriétaire"""
+        if obj.owner:
+            return f"{obj.owner.prenom} {obj.owner.nom}"
+        return None
+    
+    def get_tarif_display(self, obj):
+        """Retourne la fourchette de tarifs formatée"""
+        return f"{obj.tarif_min:,} - {obj.tarif_max:,}"
+
+
+class PrestataireListSerializer(serializers.ModelSerializer):
+    """Serializer simplifié pour la liste des prestataires"""
+    
+    tarif_display = serializers.SerializerMethodField()
+    note = serializers.DecimalField(
+        max_digits=2,
+        decimal_places=1,
+        coerce_to_string=False
+    )
+    
+    class Meta:
+        model = Prestataire
+        fields = [
+            'id',
+            'nom',
+            'contact',
+            'telephone',
+            'email',
+            'specialites',
+            'zone',
+            'note',
+            'nb_avis',
+            'tarif_display',
+            'disponibilite',
+            'experience',
+            'description'
+        ]
+    
+    def get_tarif_display(self, obj):
+        """Retourne la fourchette de tarifs formatée"""
+        return f"{obj.tarif_min:,} - {obj.tarif_max:,}"
+
+
+class PrestataireCreateSerializer(serializers.ModelSerializer):
+    """Serializer pour créer un nouveau prestataire"""
+    
+    class Meta:
+        model = Prestataire
+        fields = [
+            'nom',
+            'contact',
+            'telephone',
+            'email',
+            'specialites',
+            'zone',
+            'note',
+            'nb_avis',
+            'tarif_min',
+            'tarif_max',
+            'disponibilite',
+            'experience',
+            'certifications',
+            'description',
+            'services',
+            'projets_recents'
+        ]
+    
+    def validate_email(self, value):
+        """Valide le format de l'email"""
+        from django.core.validators import validate_email as django_validate_email
+        try:
+            django_validate_email(value)
+        except:
+            raise serializers.ValidationError("Format d'email invalide.")
+        return value
+    
+    def validate_specialites(self, value):
+        """Valide que les spécialités ne sont pas vides"""
+        if not value or len(value) == 0:
+            raise serializers.ValidationError("Au moins une spécialité doit être fournie.")
+        return value
+    
+    def to_internal_value(self, data):
+        """Convertit les données entrantes AVANT la validation"""
+        # Convertir note en Decimal si présent
+        if 'note' in data:
+            try:
+                data['note'] = Decimal(str(data['note']))
+            except:
+                pass
+        
+        # Convertir les entiers vides
+        for field in ['tarif_min', 'tarif_max', 'nb_avis']:
+            if field in data and data[field] == '':
+                data[field] = 0
+        
+        return super().to_internal_value(data)
+    
+    def validate(self, attrs):
+        """Validation globale"""
+        tarif_min = attrs.get('tarif_min', 0)
+        tarif_max = attrs.get('tarif_max', 0)
+        
+        if tarif_max < tarif_min:
+            raise serializers.ValidationError({
+                'tarif_max': 'Le tarif maximum doit être supérieur ou égal au tarif minimum.'
+            })
+        
+        # S'assurer que note est un Decimal
+        if 'note' not in attrs:
+            attrs['note'] = Decimal('0.0')
+        elif not isinstance(attrs['note'], Decimal):
+            attrs['note'] = Decimal(str(attrs['note']))
+        
+        return attrs
+    
+    def create(self, validated_data):
+        """Création du prestataire"""
+        if 'note' not in validated_data:
+            validated_data['note'] = Decimal('0.0')
+        elif not isinstance(validated_data['note'], Decimal):
+            validated_data['note'] = Decimal(str(validated_data['note']))
+        
+        return super().create(validated_data)
+    
+# ==============================================
+# SERIALIZERS POUR MAINTENANCE REQUEST
+# ==============================================
+
+class MaintenanceRequestSerializer(serializers.ModelSerializer):
+    """Serializer complet pour afficher une demande de maintenance"""
+    
+    # Informations du locataire
+    tenant_name = serializers.CharField(source='tenant.full_name', read_only=True)
+    tenant_phone = serializers.CharField(source='tenant.phone', read_only=True)
+    tenant_email = serializers.EmailField(source='tenant.email', read_only=True)
+    
+    # Informations de la propriété
+    property_title = serializers.CharField(source='linked_property.titre', read_only=True)
+    property_address = serializers.CharField(source='linked_property.adresse', read_only=True)
+    property_type = serializers.CharField(source='linked_property.type', read_only=True)
+    
+    # Informations du propriétaire
+    owner_name = serializers.SerializerMethodField()
+    owner_email = serializers.EmailField(source='linked_property.owner.email', read_only=True)
+    
+    # Champs formatés
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    request_type_display = serializers.CharField(source='get_request_type_display', read_only=True)
+    location_display = serializers.CharField(source='get_location_display', read_only=True)
+    
+    # Date formatée
+    created_at_formatted = serializers.SerializerMethodField()
+    time_elapsed = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = MaintenanceRequest
+        fields = [
+            'id',
+            'request_id',
+            'tenant',
+            'tenant_name',
+            'tenant_phone',
+            'tenant_email',
+            'linked_property',
+            'property_title',
+            'property_address',
+            'property_type',
+            'owner_name',
+            'owner_email',
+            'request_type',
+            'request_type_display',
+            'location',
+            'location_display',
+            'description',
+            'status',
+            'status_display',
+            'priority',
+            'priority_display',
+            'provider',
+            'created_at',
+            'created_at_formatted',
+            'updated_at',
+            'time_elapsed'
+        ]
+        read_only_fields = ['id', 'request_id', 'created_at', 'updated_at']
+    
+    def get_owner_name(self, obj):
+        """Retourne le nom complet du propriétaire"""
+        if obj.linked_property and obj.linked_property.owner:
+            return f"{obj.linked_property.owner.prenom} {obj.linked_property.owner.nom}"
+        return None
+    
+    def get_created_at_formatted(self, obj):
+        """Retourne la date formatée"""
+        return obj.created_at.strftime('%d/%m/%Y à %H:%M')
+    
+    def get_time_elapsed(self, obj):
+        """Retourne le temps écoulé depuis la création"""
+        from django.utils import timezone
+        diff = timezone.now() - obj.created_at
+        
+        if diff.days == 0:
+            hours = diff.seconds // 3600
+            if hours == 0:
+                minutes = diff.seconds // 60
+                return f"Il y a {minutes} min" if minutes > 0 else "À l'instant"
+            return f"Il y a {hours}h"
+        elif diff.days == 1:
+            return "Hier"
+        else:
+            return f"Il y a {diff.days} jours"
+
+
+class MaintenanceRequestListSerializer(serializers.ModelSerializer):
+    """Serializer simplifié pour la liste des demandes"""
+    
+    tenant_name = serializers.CharField(source='tenant.full_name', read_only=True)
+    property_title = serializers.CharField(source='linked_property.titre', read_only=True)
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    time_elapsed = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = MaintenanceRequest
+        fields = [
+            'id',
+            'request_id',
+            'tenant_name',
+            'property_title',
+            'request_type',
+            'status',
+            'status_display',
+            'priority',
+            'priority_display',
+            'provider',
+            'created_at',
+            'time_elapsed'
+        ]
+    
+    def get_time_elapsed(self, obj):
+        """Retourne le temps écoulé depuis la création"""
+        from django.utils import timezone
+        diff = timezone.now() - obj.created_at
+        
+        if diff.days == 0:
+            hours = diff.seconds // 3600
+            if hours == 0:
+                minutes = diff.seconds // 60
+                return f"Il y a {minutes} min" if minutes > 0 else "À l'instant"
+            return f"Il y a {hours}h"
+        elif diff.days == 1:
+            return "Hier"
+        else:
+            return f"Il y a {diff.days} jours"
+
+
+class MaintenanceRequestCreateSerializer(serializers.ModelSerializer):
+    """Serializer pour créer une nouvelle demande (locataire)"""
+    
+    class Meta:
+        model = MaintenanceRequest
+        fields = [
+            'linked_property',
+            'request_type',
+            'location',
+            'description',
+            'priority'
+        ]
+    
+    def validate_linked_property(self, value):
+        """Valide que la propriété existe et est louée par le locataire"""
+        request = self.context.get('request')
+        
+        if not request or not request.user.is_authenticated:
+            raise serializers.ValidationError("Utilisateur non authentifié")
+        
+        # Vérifier que le locataire a bien une location active pour cette propriété
+        tenant = Tenant.objects.filter(user=request.user).first()
+        
+        if not tenant:
+            raise serializers.ValidationError("Aucun profil locataire trouvé")
+        
+        # Vérifier qu'il y a une location active
+        has_active_location = Location.objects.filter(
+            tenant=tenant,
+            property=value,
+            status='active'
+        ).exists()
+        
+        if not has_active_location:
+            raise serializers.ValidationError(
+                "Vous devez avoir une location active pour cette propriété pour créer une demande de maintenance"
+            )
+        
+        return value
+    
+    def validate_description(self, value):
+        """Valide que la description n'est pas vide"""
+        if not value or len(value.strip()) < 10:
+            raise serializers.ValidationError(
+                "La description doit contenir au moins 10 caractères"
+            )
+        return value.strip()
+    
+    def validate(self, attrs):
+        """Validation globale"""
+        # Vérifier qu'il n'y a pas déjà une demande en attente/en cours pour le même problème
+        request = self.context.get('request')
+        tenant = Tenant.objects.filter(user=request.user).first()
+        
+        if tenant:
+            existing_request = MaintenanceRequest.objects.filter(
+                tenant=tenant,
+                linked_property=attrs['linked_property'],
+                request_type=attrs['request_type'],
+                location=attrs['location'],
+                status__in=['pending', 'in_progress']
+            ).exists()
+            
+            if existing_request:
+                raise serializers.ValidationError({
+                    'request_type': 'Une demande similaire est déjà en cours de traitement'
+                })
+        
+        return attrs
+
+
+class MaintenanceRequestUpdateSerializer(serializers.ModelSerializer):
+    """Serializer pour mettre à jour une demande"""
+    
+    class Meta:
+        model = MaintenanceRequest
+        fields = [
+            'status',
+            'priority',
+            'provider',
+            'description'
+        ]
+    
+    def validate_status(self, value):
+        """Valide les transitions de statut"""
+        instance = self.instance
+        
+        if not instance:
+            return value
+        
+        # Règles de transition
+        valid_transitions = {
+            'pending': ['in_progress', 'rejected'],
+            'in_progress': ['resolved', 'rejected'],
+            'resolved': [],  # Ne peut plus changer une fois résolu
+            'rejected': []   # Ne peut plus changer une fois rejeté
+        }
+        
+        current_status = instance.status
+        
+        if current_status in ['resolved', 'rejected'] and value != current_status:
+            raise serializers.ValidationError(
+                f"Une demande {instance.get_status_display()} ne peut plus être modifiée"
+            )
+        
+        if value not in valid_transitions.get(current_status, []) and value != current_status:
+            raise serializers.ValidationError(
+                f"Transition de statut invalide: {current_status} → {value}"
+            )
+        
+        return value
+    
+    def validate(self, attrs):
+        """Validation selon le rôle de l'utilisateur"""
+        request = self.context.get('request')
+        instance = self.instance
+        
+        if not instance:
+            return attrs
+        
+        # Propriétaire peut tout modifier
+        if request.user.role == 'proprietaire':
+            return attrs
+        
+        # Locataire ne peut modifier que description et priorité
+        if request.user.role == 'locataire':
+            allowed_fields = {'description', 'priority'}
+            provided_fields = set(attrs.keys())
+            
+            invalid_fields = provided_fields - allowed_fields
+            if invalid_fields:
+                raise serializers.ValidationError({
+                    'error': f"Vous ne pouvez modifier que: {', '.join(allowed_fields)}"
+                })
+        
+        return attrs
+
+
+class MaintenanceRequestAssignProviderSerializer(serializers.Serializer):
+    """Serializer pour assigner un prestataire"""
+    
+    provider = serializers.CharField(max_length=200, required=True)
+    
+    def validate_provider(self, value):
+        """Valide que le nom du prestataire n'est pas vide"""
+        if not value or len(value.strip()) < 2:
+            raise serializers.ValidationError(
+                "Le nom du prestataire doit contenir au moins 2 caractères"
+            )
+        return value.strip()
+
+
+class MaintenanceRequestRejectSerializer(serializers.Serializer):
+    """Serializer pour rejeter une demande"""
+    
+    reason = serializers.CharField(required=True, min_length=10)
+    
+    def validate_reason(self, value):
+        """Valide la raison du rejet"""
+        if not value or len(value.strip()) < 10:
+            raise serializers.ValidationError(
+                "La raison du rejet doit contenir au moins 10 caractères"
+            )
+        return value.strip()
+
+
+class MaintenanceRequestStatisticsSerializer(serializers.Serializer):
+    """Serializer pour les statistiques"""
+    
+    total = serializers.IntegerField()
+    pending = serializers.IntegerField()
+    in_progress = serializers.IntegerField()
+    resolved = serializers.IntegerField()
+    rejected = serializers.IntegerField()
+    urgent = serializers.IntegerField()
+    by_type = serializers.DictField()
+    by_location = serializers.DictField()
+    by_priority = serializers.DictField(required=False)
+    average_resolution_time = serializers.CharField(required=False)
+    
+    class Meta:
+        fields = [
+            'total',
+            'pending',
+            'in_progress',
+            'resolved',
+            'rejected',
+            'urgent',
+            'by_type',
+            'by_location',
+            'by_priority',
+            'average_resolution_time'
+        ]

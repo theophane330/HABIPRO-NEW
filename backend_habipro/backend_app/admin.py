@@ -3,7 +3,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth import get_user_model
 from .models import (
     Document, Property, PropertyMedia,
-    Tenant, Location, Contract, Payment, MaintenanceRequest, Notification, VisitRequest
+    Tenant, Location, Contract, Payment, MaintenanceRequest, Notification, VisitRequest , JuridicalDocument,JuridicalChatMessage ,Prestataire
 )
 
 User = get_user_model()
@@ -655,47 +655,47 @@ class PaymentAdmin(admin.ModelAdmin):
     """Configuration de l'interface admin pour les paiements"""
 
     list_display = [
-        'id',
+        'transaction_reference',
         'tenant',
-        'property',
+        'get_property',  # ✅ Changé ici
         'payment_month',
         'amount',
         'payment_method',
         'status',
+        'owner_notified',
         'payment_date',
-        'created_at'
     ]
 
     list_filter = [
         'status',
         'payment_method',
+        'owner_notified',
         'payment_date',
-        'created_at'
     ]
 
     search_fields = [
         'tenant__full_name',
-        'property__titre',
+        'contract__property__titre',  # ✅ Changé ici
+        'transaction_reference',
         'payment_month',
-        'transaction_reference'
     ]
 
     list_editable = ['status']
 
-    readonly_fields = ['payment_date', 'created_at', 'updated_at', 'transaction_reference']
+    readonly_fields = ['transaction_reference', 'payment_date', 'created_at', 'updated_at']
 
     fieldsets = (
         ('Relations', {
-            'fields': ('tenant', 'property', 'owner', 'location')
+            'fields': ('tenant', 'contract', 'owner')
         }),
         ('Détails du paiement', {
             'fields': ('payment_month', 'amount', 'payment_method', 'payment_date')
         }),
-        ('Statut et transaction', {
-            'fields': ('status', 'transaction_reference', 'auto_payment_enabled')
+        ('Statut', {
+            'fields': ('status', 'transaction_reference', 'owner_notified')
         }),
-        ('Documents et notes', {
-            'fields': ('receipt_pdf', 'notes')
+        ('Notes', {
+            'fields': ('notes',)
         }),
         ('Métadonnées', {
             'fields': ('created_at', 'updated_at'),
@@ -707,20 +707,30 @@ class PaymentAdmin(admin.ModelAdmin):
     ordering = ['-payment_date']
     list_per_page = 25
 
-    actions = ['mark_as_paid', 'mark_as_unpaid']
+    def get_queryset(self, request):
+        """Optimise les requêtes"""
+        qs = super().get_queryset(request)
+        return qs.select_related('tenant', 'contract', 'contract__property', 'owner')
 
-    def mark_as_paid(self, request, queryset):
-        """Marque les paiements comme payés"""
-        updated = queryset.update(status='paid')
-        self.message_user(request, f'{updated} paiement(s) marqué(s) comme payé(s).')
-    mark_as_paid.short_description = "Marquer comme payé"
+    def get_property(self, obj):
+        """Retourne le titre de la propriété via le contrat"""
+        return obj.contract.property.titre if obj.contract and obj.contract.property else '-'
+    get_property.short_description = 'Propriété'
+    get_property.admin_order_field = 'contract__property__titre'
 
-    def mark_as_unpaid(self, request, queryset):
-        """Marque les paiements comme non payés"""
-        updated = queryset.update(status='unpaid')
-        self.message_user(request, f'{updated} paiement(s) marqué(s) comme non payé(s).')
-    mark_as_unpaid.short_description = "Marquer comme non payé"
+    actions = ['confirm_payments', 'reject_payments']
 
+    def confirm_payments(self, request, queryset):
+        """Confirmer les paiements sélectionnés"""
+        updated = queryset.update(status='completed', owner_notified=True)
+        self.message_user(request, f'{updated} paiement(s) confirmé(s).')
+    confirm_payments.short_description = "Confirmer les paiements"
+
+    def reject_payments(self, request, queryset):
+        """Rejeter les paiements sélectionnés"""
+        updated = queryset.update(status='failed')
+        self.message_user(request, f'{updated} paiement(s) rejeté(s).')
+    reject_payments.short_description = "Rejeter les paiements"
 
 # ===================================
 # ADMIN POUR LES DEMANDES DE MAINTENANCE
@@ -954,7 +964,132 @@ class VisitRequestAdmin(admin.ModelAdmin):
         self.message_user(request, f'{updated} demande(s) marquée(s) comme en attente.')
     mark_as_pending.short_description = "Marquer comme en attente"
 
+@admin.register(JuridicalDocument)
+class JuridicalDocumentAdmin(admin.ModelAdmin):
+    list_display = ['name', 'user', 'status', 'is_processed', 'uploaded_at']
+    list_filter = ['status', 'is_processed', 'uploaded_at']
+    search_fields = ['name', 'user__email']
+    readonly_fields = ['uploaded_at', 'updated_at']
 
+@admin.register(JuridicalChatMessage)
+class JuridicalChatMessageAdmin(admin.ModelAdmin):
+    list_display = ['document', 'user', 'message_type', 'timestamp']
+    list_filter = ['message_type', 'timestamp']
+    search_fields = ['content', 'user__email']
+    readonly_fields = ['timestamp']
+
+# ==============================================
+# ADMIN POUR LES PRESTATAIRES
+# ==============================================
+
+@admin.register(Prestataire)
+class PrestataireAdmin(admin.ModelAdmin):
+    """Configuration de l'interface admin pour les prestataires"""
+    
+    list_display = [
+        'nom',
+        'contact',
+        'owner',
+        'telephone',
+        'email',
+        'zone',
+        'note',
+        'disponibilite',
+        'experience',
+        'created_at'
+    ]
+    
+    list_filter = [
+        'owner',
+        'disponibilite',
+        'note',
+        'experience',
+        'created_at'
+    ]
+    
+    search_fields = [
+        'nom',
+        'contact',
+        'telephone',
+        'email',
+        'zone',
+        'description'
+    ]
+    
+    list_editable = ['disponibilite']
+    
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Propriétaire', {
+            'fields': ('owner',)
+        }),
+        ('Informations de base', {
+            'fields': ('nom', 'contact', 'telephone', 'email')
+        }),
+        ('Spécialités', {
+            'fields': ('specialites', 'zone', 'description')
+        }),
+        ('Évaluation', {
+            'fields': ('note', 'nb_avis')
+        }),
+        ('Tarification', {
+            'fields': ('tarif_min', 'tarif_max')
+        }),
+        ('Disponibilité', {
+            'fields': ('disponibilite', 'experience')
+        }),
+        ('Certifications', {
+            'fields': ('certifications',)
+        }),
+        ('Services', {
+            'fields': ('services',),
+            'classes': ('collapse',)
+        }),
+        ('Projets récents', {
+            'fields': ('projets_recents',),
+            'classes': ('collapse',)
+        }),
+        ('Dates', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    date_hierarchy = 'created_at'
+    ordering = ['-created_at']
+    list_per_page = 25
+    
+    def get_queryset(self, request):
+        """Optimise les requêtes"""
+        qs = super().get_queryset(request)
+        return qs.select_related('owner')
+    
+    actions = ['mark_as_available', 'mark_as_occupied']
+    
+    def mark_as_available(self, request, queryset):
+        """Marque les prestataires comme disponibles"""
+        updated = queryset.update(disponibilite='Disponible')
+        self.message_user(
+            request,
+            f'{updated} prestataire(s) marqué(s) comme disponible(s).'
+        )
+    mark_as_available.short_description = "Marquer comme disponible"
+    
+    def mark_as_occupied(self, request, queryset):
+        """Marque les prestataires comme occupés"""
+        updated = queryset.update(disponibilite='Occupé')
+        self.message_user(
+            request,
+            f'{updated} prestataire(s) marqué(s) comme occupé(s).'
+        )
+    mark_as_occupied.short_description = "Marquer comme occupé"
+    
+    def save_model(self, request, obj, form, change):
+        """Définit automatiquement le propriétaire si non spécifié"""
+        if not change and not obj.owner:  # Nouveau prestataire sans propriétaire
+            obj.owner = request.user
+        super().save_model(request, obj, form, change)
 # ===================================
 # PERSONNALISATION DU SITE ADMIN
 # ===================================
@@ -962,3 +1097,5 @@ class VisitRequestAdmin(admin.ModelAdmin):
 admin.site.site_header = "Administration Gestion Immobilière HabiPro"
 admin.site.site_title = "Admin HabiPro"
 admin.site.index_title = "Tableau de bord - Gestion Immobilière"
+
+

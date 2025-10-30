@@ -70,8 +70,10 @@ export default function ContratsDocuments({ setIsContractModalOpen }) {
     }, [selectedCategory]);
 
     // Fonction pour charger les contrats
+
     const fetchContracts = useCallback(async () => {
         try {
+            setLoading(true);
             const token = localStorage.getItem('token');
             const headers = {
                 'Accept': 'application/json',
@@ -103,6 +105,9 @@ export default function ContratsDocuments({ setIsContractModalOpen }) {
             }
         } catch (error) {
             console.error('❌ Error fetching contracts:', error);
+            setContracts([]);
+        } finally {
+            setLoading(false);
         }
     }, []);
 

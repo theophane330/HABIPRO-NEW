@@ -11,14 +11,13 @@ import MaintenanceLocataire from "./PageOngletSideBare/MaintenanceLocataire";
 import ContratDocumentsLocataire from "./PageOngletSideBare/ContratDocumentsLocataire";
 import MesLocations from "./PageOngletSideBare/MesLocations";
 // import MessagerieLocataire from "./PageOngletSideBare/MessagerieLocataire";
+// import CalendarApp from "./PageOngletSideBare/Calendrier";
 // import EvenementsLocataire from "./PageOngletSideBare/EvenementsLocataire";
-// import InfosContratLocataire from "./PageOngletSideBare/InfosContratLocataire";
+// import InfosContrat from "./PageOngletSideBare/Infos Contrat";
 // import GuideLocataire from "./PageOngletSideBare/GuideLocataire";
 // import SupportLocataire from "./PageOngletSideBare/SupportLocataire";
 import ProfilLocataire from "./PageOngletSideBare/ProfilLocataire";
 import Paramètres from "./PageOngletSideBare/Paramètres";
-import CalendarApp from "./PageOngletSideBare/Calendrier";
-import InfosContrat from "./PageOngletSideBare/Infos Contrat";
 
 export default function LocataireDashboard() {
   const [activeNav, setActiveNav] = useState('dashboard');
@@ -208,9 +207,9 @@ export default function LocataireDashboard() {
       case 'messages':
         return null; // <MessagerieLocataire setIsMessageModalOpen={setIsMessageModalOpen} />
       case 'events':
-        return <CalendarApp />;
+        return null; // <CalendarApp />
       case 'contract':
-        return <InfosContrat />;
+        return null; // <InfosContrat />
       case 'guide':
         return null; // <GuideLocataire />
       case 'support':
@@ -233,8 +232,8 @@ export default function LocataireDashboard() {
   ];
 
   const serviceItems = [
-    { id: 'events', icon: '📅', label: 'Événements' },
-    { id: 'contract', icon: '⚖️', label: 'Infos Contrat' }
+    // { id: 'events', icon: '📅', label: 'Événements' },
+    // { id: 'contract', icon: '⚖️', label: 'Infos Contrat' }
   ];
 
   const adminItems = [
@@ -275,12 +274,12 @@ export default function LocataireDashboard() {
       gradient: 'from-purple-400 to-pink-400',
       onClick: () => setActiveNav('documents')
     },
-    {
-      icon: '📅',
-      label: 'Calendrier',
-      gradient: 'from-yellow-400 to-orange-400',
-      onClick: () => handleNavClick('events')
-    },
+    // {
+    //   icon: '📅',
+    //   label: 'Calendrier',
+    //   gradient: 'from-yellow-400 to-orange-400',
+    //   onClick: () => handleNavClick('events')
+    // },
     {
       icon: '👤',
       label: 'Mon profil',
@@ -384,7 +383,7 @@ export default function LocataireDashboard() {
                 </a>
               ))}
 
-              {!isSidebarCollapsed && (
+              {serviceItems.length > 0 && !isSidebarCollapsed && (
                 <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3 pl-3 mt-6 relative">
                   <div className="absolute left-0 top-1/2 w-2 h-0.5 bg-gradient-to-r from-blue-400 to-indigo-500 rounded-full"></div>
                   Services & Outils
