@@ -1,24 +1,53 @@
-from rest_framework import viewsets, status, filters, generics, permissions
-from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from rest_framework.authtoken.models import Token
+import os
+import io
+import csv
+from datetime import datetime
+from io import BytesIO
+from mimetypes import guess_type
+
+import requests
 from django.db import models
 from django.db.models import Q, Count, Sum
 from django.http import FileResponse, HttpResponse
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
-from mimetypes import guess_type  
-import requests 
-from .models import Document, Property, PropertyMedia, VisitRequest, Tenant, Location, Contract, Payment ,JuridicalDocument, JuridicalChatMessage ,Prestataire ,Notification  ,MaintenanceRequest
+
+from rest_framework import viewsets, status, filters, generics, permissions
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.authtoken.models import Token
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+
+from .models import (
+    Document, 
+    Property, 
+    PropertyMedia, 
+    VisitRequest, 
+    Tenant, 
+    Location, 
+    Contract, 
+    Payment,
+    JuridicalDocument, 
+    JuridicalChatMessage,
+    Prestataire,
+    Notification,
+    MaintenanceRequest,
+)
+
 from .serializers import (
     # Serializers d'authentification
     RegisterSerializer,
     LoginSerializer,
     UserSerializer,
     ChangePasswordSerializer,
+    
     # Serializers de données
     DocumentSerializer,
     DocumentListSerializer,
@@ -37,19 +66,20 @@ from .serializers import (
     TenantPaymentCreateSerializer,
     JuridicalDocumentSerializer,
     JuridicalChatMessageSerializer,
-    AskQuestionSerializer ,
+    AskQuestionSerializer,
     PrestataireSerializer, 
     PrestataireListSerializer, 
-    PrestataireCreateSerializer ,
+    PrestataireCreateSerializer,
     MaintenanceRequestSerializer,
     MaintenanceRequestCreateSerializer,
-    MaintenanceRequestUpdateSerializer ,
-
-    
+    MaintenanceRequestUpdateSerializer,
+    AdminDocumentSerializer,
+    AdminPrestataireSerializer,
+    AdminPropertySerializer,
+    AdminStatisticsSerializer,
+    AdminTenantSerializer,
+    AdminUserSerializer,
 )
-import os
-import io
-from datetime import datetime
 
 User = get_user_model()
 
@@ -2744,3 +2774,160 @@ class MaintenanceRequestViewSet(viewsets.ModelViewSet):
             'count': queryset.count(),
             'results': serializer.data
         })
+
+# ==============================================
+# VUES POUR L'ADMINISTRATEUR SYSTÈME
+# ==============================================
+
+class AdminDashboardView(APIView):
+    """Dashboard avec statistiques globales pour l'admin"""
+    
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        # Vérifier que l'utilisateur est admin
+        if request.user.role != 'admin':
+            return Response(
+                {'error': 'Accès réservé aux administrateurs'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Statistiques
+        stats = {
+            'total_users': User.objects.count(),
+            'total_proprietaires': User.objects.filter(role='proprietaire').count(),
+            'total_locataires': User.objects.filter(role='locataire').count(),
+            'total_properties': Property.objects.count(),
+            'total_documents': Document.objects.count(),
+            'total_tenants': Tenant.objects.count(),
+            'total_prestataires': Prestataire.objects.count(),
+            'recent_users': User.objects.order_by('-date_joined')[:5]
+        }
+        
+        serializer = AdminStatisticsSerializer(stats)
+        return Response(serializer.data)
+
+
+class AdminUserViewSet(viewsets.ModelViewSet):
+    """ViewSet pour gérer tous les utilisateurs (admin uniquement)"""
+    
+    queryset = User.objects.all()
+    serializer_class = AdminUserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['role', 'is_active']
+    search_fields = ['email', 'nom', 'prenom', 'telephone']
+    ordering_fields = ['date_joined', 'email']
+    ordering = ['-date_joined']
+    
+    def get_queryset(self):
+        # Vérifier que l'utilisateur est admin
+        if self.request.user.role != 'admin':
+            return User.objects.none()
+        return User.objects.all()
+    
+    @action(detail=True, methods=['post'], url_path='toggle-active')
+    def toggle_active(self, request, pk=None):
+        """Active/désactive un utilisateur"""
+        user = self.get_object()
+        user.is_active = not user.is_active
+        user.save()
+        
+        serializer = self.get_serializer(user)
+        return Response({
+            'message': f'Utilisateur {"activé" if user.is_active else "désactivé"}',
+            'data': serializer.data
+        })
+    
+    @action(detail=True, methods=['delete'], url_path='delete-user')
+    def delete_user(self, request, pk=None):
+        """Supprime un utilisateur"""
+        user = self.get_object()
+        
+        if user.role == 'admin':
+            return Response(
+                {'error': 'Impossible de supprimer un administrateur'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        email = user.email
+        user.delete()
+        
+        return Response({
+            'message': f'Utilisateur {email} supprimé avec succès'
+        })
+
+
+class AdminPropertyViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet pour consulter toutes les propriétés (admin)"""
+    
+    queryset = Property.objects.all()
+    serializer_class = AdminPropertySerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['statut', 'type', 'owner']
+    search_fields = ['titre', 'adresse']
+    
+    def get_queryset(self):
+        if self.request.user.role != 'admin':
+            return Property.objects.none()
+        return Property.objects.all().select_related('owner').prefetch_related('medias')
+    
+    @action(detail=True, methods=['delete'])
+    def delete_property(self, request, pk=None):
+        """Supprime une propriété"""
+        property_obj = self.get_object()
+        titre = property_obj.titre
+        property_obj.delete()
+        
+        return Response({
+            'message': f'Propriété "{titre}" supprimée avec succès'
+        })
+
+
+class AdminDocumentViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet pour consulter tous les documents (admin)"""
+    
+    queryset = Document.objects.all()
+    serializer_class = AdminDocumentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['category', 'status', 'owner']
+    search_fields = ['title', 'tenant', 'property']
+    
+    def get_queryset(self):
+        if self.request.user.role != 'admin':
+            return Document.objects.none()
+        return Document.objects.all().select_related('owner')
+
+
+class AdminTenantViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet pour consulter tous les locataires (admin)"""
+    
+    queryset = Tenant.objects.all()
+    serializer_class = AdminTenantSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['status', 'owner']
+    search_fields = ['full_name', 'email', 'phone']
+    
+    def get_queryset(self):
+        if self.request.user.role != 'admin':
+            return Tenant.objects.none()
+        return Tenant.objects.all().select_related('owner', 'linked_property')
+
+
+class AdminPrestataireViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet pour consulter tous les prestataires (admin)"""
+    
+    queryset = Prestataire.objects.all()
+    serializer_class = AdminPrestataireSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['disponibilite', 'owner']
+    search_fields = ['nom', 'contact', 'email', 'zone']
+    
+    def get_queryset(self):
+        if self.request.user.role != 'admin':
+            return Prestataire.objects.none()
+        return Prestataire.objects.all().select_related('owner')

@@ -60,8 +60,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     ROLE_CHOICES = [
         ('proprietaire', 'Propriétaire'),
         ('locataire', 'Locataire'),
+        ('admin', 'Administrateur Système'),  
     ]
-    
     # Informations de base
     email = models.EmailField(unique=True, verbose_name='Email')
     nom = models.CharField(max_length=100, verbose_name='Nom')
@@ -1304,4 +1304,3 @@ class Prestataire(models.Model):
             return f"{words[0][0]}{words[1][0]}".upper()
         return self.nom[0].upper() if self.nom else "?"
     
-        

@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 
 /**
  * Composant pour protéger les routes selon l'authentification et le rôle
+ * ✅ AVEC SUPPORT ADMIN
  */
 const ProtectedRoute = ({ children, allowedRole }) => {
   const [isChecking, setIsChecking] = useState(true);
@@ -47,12 +48,20 @@ const ProtectedRoute = ({ children, allowedRole }) => {
     return <Navigate to="/login" replace />;
   }
 
-  // Si le rôle ne correspond pas, rediriger vers l'interface appropriée
+  // ✅ NOUVELLE LOGIQUE: Gestion du rôle avec support admin
   if (allowedRole && userRole !== allowedRole) {
-    if (userRole === 'proprietaire') {
-      return <Navigate to="/proprietaire" replace />;
-    } else {
-      return <Navigate to="/locataire" replace />;
+    // Rediriger vers l'interface appropriée selon le rôle de l'utilisateur
+    switch(userRole) {
+      case 'admin':
+        return <Navigate to="/admin" replace />;
+      case 'proprietaire':
+        return <Navigate to="/proprietaire" replace />;
+      case 'locataire':
+        return <Navigate to="/locataire" replace />;
+      default:
+        // Si rôle inconnu, déconnecter et rediriger vers login
+        localStorage.clear();
+        return <Navigate to="/login" replace />;
     }
   }
 

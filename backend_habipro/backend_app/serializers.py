@@ -895,7 +895,7 @@ class TenantPaymentCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Créer le paiement"""
         request = self.context.get('request')
-        tenant = Tenant.objects.get(user=request.user)
+        tenant = Tenant.objects.filter(user=request.user).first()
         contract = validated_data['contract']
 
         # Créer le paiement
@@ -1465,3 +1465,104 @@ class MaintenanceRequestStatisticsSerializer(serializers.Serializer):
             'by_priority',
             'average_resolution_time'
         ]
+
+# ==============================================
+# SERIALIZERS POUR L'ADMINISTRATEUR SYSTÈME
+# ==============================================
+
+class AdminUserSerializer(serializers.ModelSerializer):
+    """Serializer pour gérer les utilisateurs (admin)"""
+    
+    full_name = serializers.SerializerMethodField()
+    properties_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = [
+            'id', 'email', 'nom', 'prenom', 'full_name', 'telephone', 
+            'role', 'is_active', 'date_joined', 'last_login',
+            'properties_count'
+        ]
+        read_only_fields = ['id', 'date_joined', 'last_login']
+    
+    def get_full_name(self, obj):
+        return f"{obj.prenom} {obj.nom}"
+    
+    def get_properties_count(self, obj):
+        if obj.role == 'proprietaire':
+            return Property.objects.filter(owner=obj).count()
+        return 0
+
+
+class AdminPropertySerializer(serializers.ModelSerializer):
+    """Serializer simplifié pour les propriétés (admin)"""
+    
+    owner_name = serializers.CharField(source='owner.get_full_name', read_only=True)
+    medias_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Property
+        fields = [
+            'id', 'titre', 'adresse', 'type', 'statut', 'prix', 
+            'chambres', 'salles_de_bain', 'owner', 'owner_name',
+            'date_ajout', 'medias_count'
+        ]
+    
+    def get_medias_count(self, obj):
+        return obj.medias.count()
+
+
+class AdminDocumentSerializer(serializers.ModelSerializer):
+    """Serializer simplifié pour les documents (admin)"""
+    
+    owner_name = serializers.CharField(source='owner.get_full_name', read_only=True)
+    
+    class Meta:
+        model = Document
+        fields = [
+            'id', 'title', 'category', 'type', 'status', 
+            'owner', 'owner_name', 'tenant', 'property',
+            'date', 'size', 'created_at'
+        ]
+
+
+class AdminTenantSerializer(serializers.ModelSerializer):
+    """Serializer simplifié pour les locataires (admin)"""
+    
+    owner_name = serializers.CharField(source='owner.get_full_name', read_only=True)
+    property_title = serializers.CharField(source='linked_property.titre', read_only=True)
+    
+    class Meta:
+        model = Tenant
+        fields = [
+            'id', 'full_name', 'email', 'phone', 'status',
+            'owner', 'owner_name', 'linked_property', 'property_title',
+            'monthly_rent', 'lease_start_date', 'created_at'
+        ]
+
+
+class AdminPrestataireSerializer(serializers.ModelSerializer):
+    """Serializer simplifié pour les prestataires (admin)"""
+    
+    owner_name = serializers.CharField(source='owner.get_full_name', read_only=True)
+    
+    class Meta:
+        model = Prestataire
+        fields = [
+            'id', 'nom', 'contact', 'telephone', 'email',
+            'specialites', 'zone', 'note', 'disponibilite',
+            'owner', 'owner_name', 'created_at'
+        ]
+
+
+class AdminStatisticsSerializer(serializers.Serializer):
+    """Serializer pour les statistiques globales"""
+    
+    total_users = serializers.IntegerField()
+    total_proprietaires = serializers.IntegerField()
+    total_locataires = serializers.IntegerField()
+    total_properties = serializers.IntegerField()
+    total_documents = serializers.IntegerField()
+    total_tenants = serializers.IntegerField()
+    total_prestataires = serializers.IntegerField()
+    recent_users = AdminUserSerializer(many=True)
